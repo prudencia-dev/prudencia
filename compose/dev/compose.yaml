@@ -1,0 +1,68 @@
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: prudencia-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    ports:
+      - "5432:5432"
+    volumes:
+      - /opt/prudencia/data/postgres:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: /opt/prudencia/data/fastapi
+      dockerfile: Dockerfile
+    container_name: prudencia-api
+    restart: unless-stopped
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+      CHROMA_COLLECTION: prudencia_legal_documents
+      UPLOAD_DIR: /uploads
+      HF_HOME: /models/huggingface
+      HF_HUB_DISABLE_XET: "1"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "${API_PORT}:8000"
+    volumes:
+      - /opt/prudencia/data/fastapi:/app
+      - /opt/prudencia/data/uploads:/uploads
+      - /opt/prudencia/data/models/huggingface:/models/huggingface
+      - /opt/prudencia/models:/models
+    depends_on:
+      - postgres
+      - chromadb
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: prudencia-chromadb
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - /opt/prudencia/data/chromadb:/data
+
+  streamlit:
+    image: python:3.12-slim
+    container_name: prudencia-streamlit
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "pip install -r requirements.txt && streamlit run app.py --server.address=0.0.0.0 --server.port=8501"
+    ports:
+      - "8501:8501"
+    volumes:
+      - /opt/prudencia/data/streamlit:/app
+    depends_on:
+      - api

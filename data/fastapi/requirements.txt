@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+pydantic
+psycopg[binary]
+chromadb
+transformers
+sentence-transformers
+sentencepiece
+torch
+python-multipart
+PyMuPDF
+scikit-learn
+pandas
+joblib
+datasets
+accelerate
