@@ -667,6 +667,84 @@ class FineTuningTrainer:
         )
 
         return str(model_path)
+
+    def predict(
+        self,
+        model_name: str,
+        text: str,
+    ) -> dict[str, Any]:
+        """
+        Réalise une prédiction avec un modèle Fine-Tuné.
+        """
+
+        import torch
+
+        if model_name not in AVAILABLE_MODELS:
+            raise ValueError(
+                f"Modèle inconnu : {model_name}"
+            )
+
+        model_config = AVAILABLE_MODELS[model_name]
+
+        model_path = (
+            FINE_TUNED_DIR /
+            model_config["folder"]
+        )
+
+        if not model_path.exists():
+            raise FileNotFoundError(
+                "Le modèle Fine-Tuné est introuvable."
+            )
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+        )
+
+        model = AutoModelForSequenceClassification.from_pretrained(
+            model_path,
+        )
+
+        model.eval()
+
+        inputs = tokenizer(
+            text,
+            truncation=True,
+            padding=True,
+            max_length=512,
+            return_tensors="pt",
+        )
+
+        with torch.no_grad():
+
+            outputs = model(**inputs)
+
+            probabilities = torch.softmax(
+                outputs.logits,
+                dim=1,
+            )
+
+            confidence, prediction = torch.max(
+                probabilities,
+                dim=1,
+            )
+
+        prediction_id = int(prediction.item())
+
+        label = model.config.id2label.get(
+            prediction_id,
+            str(prediction_id),
+        )
+
+        return {
+            "success": True,
+            "model_name": model_name,
+            "prediction": label,
+            "confidence": float(confidence.item()),
+            "probabilities": {
+                model.config.id2label[i]: float(probabilities[0][i])
+                for i in range(probabilities.shape[1])
+            },
+        }
     
     def reset_model(
         self,

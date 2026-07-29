@@ -1,11 +1,12 @@
+
 from __future__ import annotations
 
 import shutil
 import time
 
+from pydantic import BaseModel
 from pathlib import Path
 from typing import Any
-
 from fastapi import (
     APIRouter,
     File,
@@ -13,7 +14,6 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-
 from app.ai.fine_tuning.trainer import FineTuningTrainer
 from app.config import AVAILABLE_MODELS
 from app.services.training_history_service import (
@@ -34,6 +34,9 @@ UPLOAD_DATASET_DIR.mkdir(
     exist_ok=True,
 )
 
+class PredictionRequest(BaseModel):
+    model_name: str
+    text: str
 
 def _extract_metrics(
     training_result: dict[str, Any],
@@ -352,11 +355,11 @@ def reset_fine_tuned_model(
             model_name=model_name,
         )
 
-        save_model_reset(
-            model_type="deep_learning",
-            model_name=model_name,
-            model_version="base",
-        )
+ #       save_model_reset(
+ #           model_type="deep_learning",
+ #           model_name=model_name,
+ #           model_version="base",
+ #       )
 
         return result
 
@@ -380,3 +383,64 @@ def reset_fine_tuned_model(
                 f"du modèle Fine-Tuning : {error}"
             ),
         ) from error
+
+
+@router.post("/predict")
+def predict_with_fine_tuned_model(
+    request: PredictionRequest,
+) -> dict[str, Any]:
+    """
+    Réalise une prédiction avec un modèle Fine-Tuné.
+    """
+
+    if request.model_name not in AVAILABLE_MODELS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Modèle inconnu : {request.model_name}. "
+                f"Modèles disponibles : "
+                f"{list(AVAILABLE_MODELS.keys())}"
+            ),
+        )
+
+    if not request.text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Le texte à analyser est obligatoire.",
+        )
+
+    try:
+        trainer = FineTuningTrainer()
+
+        return trainer.predict(
+            model_name=request.model_name,
+            text=request.text.strip(),
+        )
+
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Erreur pendant la prédiction "
+                f"Fine-Tuning : {error}"
+            ),
+        ) from error
+

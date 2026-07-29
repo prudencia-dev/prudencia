@@ -2,739 +2,879 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 import requests
 import streamlit as st
-import time
+
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+st.set_page_config(
+    page_title="Rapport questionnaire",
+    page_icon="📋",
+    layout="wide",
+)
 
 API_URL = os.getenv(
     "PRUDENCIA_API_URL",
     os.getenv("API_URL", "http://api:8000"),
 ).rstrip("/")
 
+QUESTIONNAIRE_ENDPOINT = "/questionnaire-mvp/active"
+SUBMIT_ENDPOINT = "/questionnaire-mvp/submit"
+REPORT_ML_ENDPOINT = "/reports/generate-ml"
 
-st.set_page_config(
-    page_title="Rapport Questionnaire",
-    page_icon="📚",
-    layout="wide",
+ML_PREDICT_ENDPOINTS = (
+    "/ml/predict",
+    "/machine-learning/predict",
 )
 
+REQUEST_TIMEOUT = 120
 
-def generate_report(
-    payload: dict[str, Any],
+
+# =============================================================================
+# API
+# =============================================================================
+
+class APIError(RuntimeError):
+    """Erreur API affichable dans Streamlit."""
+
+
+def api_request(
+    method: str,
+    endpoint: str,
+    payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """
-    Appelle l'API de génération du rapport PRUDENCIA.
-    """
+    try:
+        response = requests.request(
+            method=method,
+            url=f"{API_URL}{endpoint}",
+            json=payload,
+            timeout=REQUEST_TIMEOUT,
+        )
+    except requests.RequestException as error:
+        raise APIError(
+            f"Impossible de contacter l'API : {error}"
+        ) from error
+
+    if response.status_code >= 400:
+        try:
+            detail = response.json()
+        except ValueError:
+            detail = response.text
+
+        raise APIError(
+            f"Erreur API {response.status_code} "
+            f"sur {endpoint} : {detail}"
+        )
 
     try:
-        response = requests.post(
-            f"{API_URL}/reports/generate",
-            json=payload,
-            timeout=120,
+        data = response.json()
+    except ValueError as error:
+        raise APIError(
+            f"Réponse JSON invalide depuis {endpoint}."
+        ) from error
+
+    if not isinstance(data, dict):
+        raise APIError(
+            f"Format de réponse inattendu depuis {endpoint}."
         )
 
-    except requests.Timeout as error:
-        raise RuntimeError(
-            "Le délai de génération du rapport a été dépassé."
-        ) from error
+    return data
 
-    except requests.ConnectionError as error:
-        raise RuntimeError(
-            "Impossible de contacter l'API PRUDENCIA."
-        ) from error
 
-    except requests.RequestException as error:
-        raise RuntimeError(
-            f"Erreur réseau : {error}"
-        ) from error
+def ml_predict(
+    features: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    L'endpoint ML attend une liste de lignes dans la clé data.
+    """
+    payload = {
+        "data": [
+            features
+        ]
+    }
 
-    if response.status_code != 200:
+    last_error: APIError | None = None
+
+    for endpoint in ML_PREDICT_ENDPOINTS:
         try:
-            error_detail = response.json()
-        except ValueError:
-            error_detail = response.text
+            return api_request(
+                "POST",
+                endpoint,
+                payload,
+            )
+        except APIError as error:
+            last_error = error
 
-        raise RuntimeError(
-            f"Erreur API {response.status_code} : "
-            f"{error_detail}"
+            if "404" not in str(error):
+                raise
+
+    raise last_error or APIError(
+        "Aucune route de prédiction ML disponible."
+    )
+
+
+# =============================================================================
+# NORMALISATION DE LA PRÉDICTION
+# =============================================================================
+
+def first_item(value: Any) -> Any:
+    if isinstance(value, list):
+        return value[0] if value else None
+
+    return value
+
+
+def extract_prediction_result(
+    raw_result: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Accepte plusieurs formats de réponse possibles du service ML.
+    """
+
+    source = raw_result
+
+    if isinstance(raw_result.get("result"), dict):
+        source = raw_result["result"]
+
+    elif isinstance(raw_result.get("results"), list):
+        results = raw_result["results"]
+
+        if results and isinstance(results[0], dict):
+            source = results[0]
+
+    prediction = (
+        source.get("prediction")
+        or source.get("classification")
+        or source.get("risk_level_aiact")
+        or source.get("predicted_class")
+        or source.get("predictions")
+    )
+
+    prediction = first_item(prediction)
+
+    confidence = (
+        source.get("confidence")
+        or source.get("score")
+        or source.get("probability")
+    )
+
+    confidence = first_item(confidence)
+
+    probabilities = (
+        source.get("probabilities")
+        or source.get("class_probabilities")
+        or source.get("prediction_probabilities")
+        or {}
+    )
+
+    if isinstance(probabilities, list):
+        probabilities = (
+            probabilities[0]
+            if probabilities
+            and isinstance(probabilities[0], dict)
+            else {}
         )
 
-    return response.json()
+    if prediction is None:
+        raise APIError(
+            "La réponse du modèle ML ne contient aucune classification."
+        )
+
+    return {
+        "prediction": str(prediction),
+        "confidence": (
+            float(confidence)
+            if isinstance(confidence, (int, float))
+            else None
+        ),
+        "probabilities": (
+            probabilities
+            if isinstance(probabilities, dict)
+            else {}
+        ),
+        "raw_result": raw_result,
+    }
 
 
-def display_classification(
-    classification: str,
-) -> None:
+# =============================================================================
+# QUESTIONNAIRE
+# =============================================================================
+
+def question_number(code: str) -> int:
+    match = re.fullmatch(r"Q(\d+)", code.strip())
+
+    if match:
+        return int(match.group(1))
+
+    return 10_000
+
+
+def is_answered(
+    value: Any,
+    answer_type: str,
+) -> bool:
     """
-    Affiche visuellement la classification AI Act.
+    False est une réponse valide correspondant à « Non ».
     """
+    if answer_type == "boolean":
+        return value is not None
 
-    normalized = classification.lower()
+    if answer_type == "multiple_choice":
+        return isinstance(value, list) and len(value) > 0
 
-    if "interdit" in normalized:
-        st.error(f"⛔ {classification}")
+    if isinstance(value, str):
+        return bool(value.strip())
 
-    elif "haut" in normalized or "élevé" in normalized:
-        st.error(f"🔴 {classification}")
+    return value is not None
 
-    elif "limité" in normalized or "modéré" in normalized:
-        st.warning(f"🟠 {classification}")
 
-    elif "minimal" in normalized or "faible" in normalized:
-        st.success(f"🟢 {classification}")
+def question_label(
+    question: dict[str, Any],
+) -> str:
+    code = str(question.get("code", "")).strip()
+    label = str(question.get("label", "")).strip()
+    required = bool(question.get("is_required"))
 
+    if re.fullmatch(r"Q\d+", code):
+        result = f"{code}. {label}"
+    elif code == "ML_TYPE_IA":
+        result = f"Complément ML — {label}"
     else:
-        st.info(f"🔵 {classification}")
+        result = f"{code} — {label}" if code else label
+
+    if required:
+        result += " *"
+
+    return result
 
 
-def display_report(
+def render_question(
+    question: dict[str, Any],
+) -> Any:
+    code = str(question["code"])
+    answer_type = str(question["answer_type"])
+    label = question_label(question)
+    description = question.get("description")
+    key = f"prudencia_{code}"
+
+    if answer_type == "boolean":
+        selected = st.radio(
+            label,
+            options=["Non renseigné", "Oui", "Non"],
+            horizontal=True,
+            help=description,
+            key=key,
+        )
+
+        if selected == "Oui":
+            return True
+
+        if selected == "Non":
+            return False
+
+        return None
+
+    if answer_type == "text":
+        return st.text_area(
+            label,
+            help=description,
+            key=key,
+            height=100,
+        ).strip()
+
+    if answer_type == "integer":
+        return int(
+            st.number_input(
+                label,
+                step=1,
+                help=description,
+                key=key,
+            )
+        )
+
+    if answer_type == "decimal":
+        return float(
+            st.number_input(
+                label,
+                help=description,
+                key=key,
+            )
+        )
+
+    options = question.get("options") or []
+
+    labels = [
+        str(option["label"])
+        for option in options
+        if isinstance(option, dict)
+        and "label" in option
+    ]
+
+    values_by_label = {
+        str(option["label"]): option.get(
+            "value",
+            option["label"],
+        )
+        for option in options
+        if isinstance(option, dict)
+        and "label" in option
+    }
+
+    if answer_type == "single_choice":
+        selected = st.selectbox(
+            label,
+            options=["— Sélectionner —", *labels],
+            help=description,
+            key=key,
+        )
+
+        if selected == "— Sélectionner —":
+            return None
+
+        return values_by_label[selected]
+
+    if answer_type == "multiple_choice":
+        selected = st.multiselect(
+            label,
+            options=labels,
+            help=description,
+            key=key,
+        )
+
+        return [
+            values_by_label[item]
+            for item in selected
+        ]
+
+    st.warning(
+        f"Type de question non pris en charge : {answer_type}"
+    )
+
+    return None
+
+
+# =============================================================================
+# AFFICHAGE DU RAPPORT MÉTIER
+# =============================================================================
+
+def format_confidence(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return "Non disponible"
+
+    numeric = float(value)
+
+    if numeric <= 1:
+        return f"{numeric:.1%}"
+
+    return f"{numeric:.1f} %"
+
+
+def display_business_report(
     report: dict[str, Any],
 ) -> None:
-    """
-    Affiche la vue client du rapport PRUDENCIA.
-    """
+    classification = report.get("classification") or {}
+    project = report.get("project") or {}
+    features = report.get("features") or {}
 
-    project = report.get("project", {})
-    ai_act = report.get("ai_act", {})
-    risks = report.get("risks", [])
-    recommendations = report.get(
-        "recommendations",
-        [],
+    classification_code = str(
+        classification.get("code", "")
+    ).lower()
+
+    classification_label_value = str(
+        classification.get(
+            "label",
+            "Classification non disponible",
+        )
     )
-    legal_references = report.get(
-        "legal_references",
-        [],
+
+    confidence = classification.get("confidence")
+    probabilities = (
+        classification.get("probabilities")
+        or {}
     )
 
     st.divider()
-    st.header("Rapport de pré-diagnostic")
+    st.header("📊 Rapport de pré-diagnostic AI Act")
 
-    st.subheader(
-        project.get(
-            "title",
-            "Projet IA",
+    if classification_code == "interdit":
+        st.error(
+            f"⛔ {classification_label_value}"
         )
-    )
-
-    project_description = project.get(
-        "description",
-        "",
-    )
-
-    if project_description:
-        st.write(project_description)
-
-    metadata_columns = st.columns(3)
-
-    metadata_columns[0].metric(
-        "Version",
-        report.get("version", "1.0"),
-    )
-
-    metadata_columns[1].metric(
-        "Risques",
-        len(risks),
-    )
-
-    metadata_columns[2].metric(
-        "Recommandations",
-        len(recommendations),
-    )
-
-    st.caption(
-        f"Identifiant d'analyse : "
-        f"{report.get('analysis_id', 'Non disponible')}"
-    )
-
-    st.divider()
-
-    classification_column, conformity_column = st.columns(2)
-
-    with classification_column:
-        st.subheader("Classification AI Act")
-
-        classification = str(
-            ai_act.get(
-                "classification",
-                "À déterminer",
-            )
+    elif classification_code == "haut_risque":
+        st.error(
+            f"🔴 {classification_label_value}"
         )
-
-        display_classification(
-            classification
+    elif classification_code == "risque_limite":
+        st.warning(
+            f"🟠 {classification_label_value}"
         )
-
-        confidence = ai_act.get(
-            "confidence"
+    elif classification_code == "risque_minimal":
+        st.success(
+            f"🟢 {classification_label_value}"
         )
-
-        if isinstance(
-            confidence,
-            (int, float),
-        ):
-            st.metric(
-                "Indice de confiance",
-                f"{float(confidence):.1%}",
-            )
-
-    with conformity_column:
-        st.subheader("État de conformité")
-
-        conformity_status = report.get(
-            "conformity_status",
-            "À déterminer",
-        )
-
-        st.info(
-            str(conformity_status)
-        )
-
-    justification = ai_act.get(
-        "justification",
-        "",
-    )
-
-    if justification:
-        st.subheader("Justification")
-        st.write(justification)
-
-    st.divider()
-    st.subheader("Risques identifiés")
-
-    if not risks:
-        st.info(
-            "Aucun risque spécifique n'a été identifié."
-        )
-
     else:
-        for index, risk in enumerate(
-            risks,
-            start=1,
+        st.info(
+            f"🔵 {classification_label_value}"
+        )
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Projet",
+        project.get("name", "Non renseigné"),
+    )
+
+    col2.metric(
+        "Classification",
+        classification_label_value,
+    )
+
+    col3.metric(
+        "Confiance",
+        format_confidence(confidence),
+    )
+
+    st.subheader("Interprétation")
+    st.write(
+        report.get(
+            "interpretation",
+            "Aucune interprétation disponible.",
+        )
+    )
+
+    st.subheader("Variables analysées")
+
+    feature_labels = {
+        "secteur_grp": "Secteur",
+        "role": "Rôle",
+        "donnees_perso": "Données personnelles",
+        "donnees_sensibles": "Données sensibles",
+        "type_ia_norm": "Type d'IA",
+    }
+
+    if features:
+        columns = st.columns(
+            min(len(features), 5)
+        )
+
+        for index, (name, value) in enumerate(
+            features.items()
         ):
-            if not isinstance(risk, dict):
-                st.warning(
-                    f"{index}. {risk}"
-                )
-                continue
-
-            category = risk.get(
-                "category",
-                "Général",
+            columns[index % len(columns)].metric(
+                feature_labels.get(name, name),
+                str(value),
             )
 
-            level = risk.get(
-                "level",
-                "À évaluer",
+    if isinstance(probabilities, dict) and probabilities:
+        st.subheader("Probabilités par classe")
+
+        for class_name, probability in sorted(
+            probabilities.items(),
+            key=lambda item: float(item[1]),
+            reverse=True,
+        ):
+            numeric = float(probability)
+
+            progress_value = (
+                numeric
+                if numeric <= 1
+                else numeric / 100
             )
 
-            description = risk.get(
-                "description",
-                "",
+            st.progress(
+                min(max(progress_value, 0.0), 1.0),
+                text=(
+                    f"{class_name} — "
+                    f"{format_confidence(numeric)}"
+                ),
             )
 
-            with st.container(
-                border=True
-            ):
-                st.markdown(
-                    f"**{index}. {category} — {level}**"
-                )
-                st.write(description)
+    obligations = report.get("obligations") or []
 
-    st.divider()
+    st.subheader("Obligations principales")
+
+    if obligations:
+        for obligation in obligations:
+            st.write(f"✅ {obligation}")
+    else:
+        st.write(
+            "Aucune obligation indicative n'a été générée."
+        )
+
+    recommendations = (
+        report.get("recommendations")
+        or []
+    )
+
     st.subheader("Recommandations")
 
-    if not recommendations:
-        st.info(
+    if recommendations:
+        for recommendation in recommendations:
+            st.write(f"• {recommendation}")
+    else:
+        st.write(
             "Aucune recommandation n'a été générée."
         )
 
-    else:
-        for recommendation in recommendations:
-            if not isinstance(
-                recommendation,
-                dict,
-            ):
-                st.write(
-                    f"- {recommendation}"
-                )
-                continue
+    disclaimer = report.get("disclaimer")
 
-            priority = recommendation.get(
-                "priority",
-                "—",
-            )
-
-            category = recommendation.get(
-                "category",
-                "Général",
-            )
-
-            action = recommendation.get(
-                "action",
-                "",
-            )
-
-            with st.container(
-                border=True
-            ):
-                st.markdown(
-                    f"**Priorité {priority} — {category}**"
-                )
-                st.write(action)
-
-    st.divider()
-    st.subheader("Références réglementaires")
-
-    if not legal_references:
-        st.info(
-            "Aucune référence réglementaire "
-            "n'a été associée."
-        )
-
-    else:
-        for index, reference in enumerate(
-            legal_references,
-            start=1,
-        ):
-            if not isinstance(
-                reference,
-                dict,
-            ):
-                st.write(reference)
-                continue
-
-            document = reference.get(
-                "document",
-                "Document réglementaire",
-            )
-
-            article = reference.get(
-                "article",
-            )
-
-            excerpt = reference.get(
-                "excerpt",
-                "",
-            )
-
-            reference_title = (
-                f"{index}. {document}"
-            )
-
-            if article:
-                reference_title += (
-                    f" — {article}"
-                )
-
-            with st.expander(
-                reference_title
-            ):
-                st.write(excerpt)
-
-    conclusion = report.get(
-        "conclusion",
-        "",
-    )
-
-    if conclusion:
-        st.divider()
-        st.subheader("Conclusion")
-        st.write(conclusion)
-
-    st.divider()
-
-    report_json = json.dumps(
-        report,
-        ensure_ascii=False,
-        indent=2,
-        default=str,
-    )
+    if disclaimer:
+        st.warning(disclaimer)
 
     st.download_button(
         label="⬇️ Télécharger le rapport JSON",
-        data=report_json,
-        file_name="rapport_prudencia.json",
+        data=json.dumps(
+            report,
+            ensure_ascii=False,
+            indent=2,
+        ),
+        file_name=(
+            "rapport_questionnaire_prudencia.json"
+        ),
         mime="application/json",
         use_container_width=True,
     )
 
-    if st.button(
-        "🆕 Nouvelle analyse",
-        use_container_width=True,
-    ):
-        st.session_state.pop(
-            "prudencia_generated_report",
-            None,
-        )
-        st.rerun()
-
-    with st.expander(
-        "Afficher le JSON complet"
-    ):
+    with st.expander("Données techniques"):
         st.json(report)
 
 
-st.title("📚 Rapports d'analyse")
+# =============================================================================
+# PAGE
+# =============================================================================
 
-tab_doc, tab_ml = st.tabs(
-    [
-        "📘 Analyse documentaire",
-        "📗 Analyse questionnaire",
-    ]
+st.title("📋 Rapport questionnaire")
+
+st.markdown(
+    """
+    Ce parcours crée ou retrouve un projet, enregistre les réponses
+    dans PostgreSQL, réalise une prédiction avec le modèle
+    **Random Forest**, puis génère un rapport métier de pré-diagnostic.
+    """
 )
 
-tab_doc, tab_ml = st.tabs(
-    [
-        "📘 Analyse documentaire",
-        "📗 Analyse questionnaire",
-    ]
+st.subheader("📁 Informations du projet")
+
+project_name = st.text_input(
+    "Nom du projet *",
+    placeholder="Exemple : Assistant IA de recrutement",
 )
 
-with tab_doc:
+project_description = st.text_area(
+    "Description du projet",
+    placeholder=(
+        "Décrivez brièvement le système "
+        "d'intelligence artificielle."
+    ),
+)
 
-    st.success(
-        "🟢 Rapport documentaire"
+st.caption(
+    "Les champs marqués d'un astérisque (*) sont obligatoires."
+)
+
+
+# =============================================================================
+# CHARGEMENT DE L'API
+# =============================================================================
+
+try:
+    api_data = api_request(
+        "GET",
+        QUESTIONNAIRE_ENDPOINT,
     )
+except APIError as error:
+    st.error(str(error))
+    st.stop()
 
-    st.success(
-        "🟢 MVP PRUDENCIA - Démonstration"
+questionnaire = api_data.get("questionnaire")
+
+if not isinstance(questionnaire, dict):
+    st.error(
+        "La réponse de l'API ne contient pas "
+        "de questionnaire valide."
     )
+    st.stop()
 
-    st.caption(
-        "Génération d'un pré-diagnostic réglementaire "
-        "structuré pour un projet d'intelligence artificielle."
+questions = questionnaire.get("questions")
+
+if not isinstance(questions, list) or not questions:
+    st.error(
+        "Aucune question active n'est disponible."
     )
+    st.stop()
 
-    st.info(
-        "Cette page de démonstration assemble les informations "
-        "du projet, le résultat du questionnaire, l'analyse "
-        "textuelle et les références réglementaires."
-    )
+questions = sorted(
+    questions,
+    key=lambda question: (
+        question_number(
+            str(question.get("code", ""))
+        ),
+        int(
+            question.get("display_order")
+            or 10_000
+        ),
+    ),
+)
 
-    with st.form(
-        "prudencia_report_form"
-    ):
-        st.subheader("1. Projet analysé")
-
-        project_title = st.text_input(
-            "Nom du projet",
-            value="Assistant de recrutement",
-        )
-
-        project_description = st.text_area(
-            "Description du projet",
-            value=(
-                "Système d'intelligence artificielle qui analyse "
-                "les CV, évalue les candidatures et classe "
-                "automatiquement les candidats."
-            ),
-            height=130,
-        )
-
-        st.subheader("2. Résultat du questionnaire")
-
-        classification = st.selectbox(
-            "Classification AI Act",
-            [
-                "Haut risque",
-                "Risque limité",
-                "Risque minimal",
-                "Pratique interdite",
-                "À déterminer",
-            ],
-        )
-
-        confidence_percent = st.slider(
-            "Indice de confiance",
-            min_value=0,
-            max_value=100,
-            value=87,
-        )
-
-        risk_description = st.text_area(
-            "Risque principal identifié",
-            value=(
-                "Le système intervient dans le domaine de "
-                "l'emploi et peut influencer l'accès d'une "
-                "personne à une opportunité professionnelle."
-            ),
-            height=100,
-        )
-
-        st.subheader("3. Analyse textuelle")
-
-        justification = st.text_area(
-            "Justification",
-            value=(
-                "Le projet automatise une partie du processus "
-                "de sélection des candidats. Il doit donc faire "
-                "l'objet d'une surveillance humaine et d'une "
-                "documentation renforcée."
-            ),
-            height=120,
-        )
-
-        recommendation = st.text_area(
-            "Recommandation principale",
-            value=(
-                "Mettre en place une supervision humaine, "
-                "documenter les critères de classement et "
-                "permettre la contestation des décisions."
-            ),
-            height=100,
-        )
-
-        st.subheader("4. Référence réglementaire")
-
-        reference_document = st.text_input(
-            "Document",
-            value="Règlement européen sur l'intelligence artificielle",
-        )
-
-        reference_article = st.text_input(
-            "Article ou annexe",
-            value="Annexe III",
-        )
-
-        reference_excerpt = st.text_area(
-            "Extrait réglementaire",
-            value=(
-                "Les systèmes d'IA destinés au recrutement "
-                "ou à la sélection de personnes peuvent relever "
-                "de la catégorie des systèmes à haut risque."
-            ),
-            height=110,
-        )
-
-        submitted = st.form_submit_button(
-            "🚀 Générer le rapport PRUDENCIA",
-            type="primary",
-            use_container_width=True,
-        )
+st.info(
+    f"**{questionnaire.get('name', 'Questionnaire PRUDENCIA')}**  \n"
+    f"{questionnaire.get('description') or ''}"
+)
 
 
-    if submitted:
-        if not project_description.strip():
-            st.error(
-                "La description du projet est obligatoire."
-            )
+# =============================================================================
+# QUESTIONS PAR SECTION
+# =============================================================================
 
-        else:
-            risks: list[dict[str, Any]] = []
+section_titles = {
+    "ai_act": "⚖️ AI Act et contexte du système",
+    "rgpd": "🔐 Données et RGPD",
+    "ethics": "🧭 Éthique et impacts",
+    "technical": "⚙️ Technique, sécurité et documentation",
+    "governance": "🏛️ Gouvernance et supervision",
+}
 
-            if risk_description.strip():
-                risks.append(
-                    {
-                        "category": "AI Act",
-                        "level": (
-                            "Élevé"
-                            if classification
-                            == "Haut risque"
-                            else "À évaluer"
-                        ),
-                        "description": (
-                            risk_description.strip()
-                        ),
-                    }
-                )
+category_order = [
+    "ai_act",
+    "rgpd",
+    "ethics",
+    "technical",
+    "governance",
+]
 
-            recommendations: list[str] = []
+answers: dict[str, Any] = {}
+displayed_ids: set[str] = set()
 
-            if recommendation.strip():
-                recommendations.append(
-                    recommendation.strip()
-                )
+for category in category_order:
+    category_questions = [
+        question
+        for question in questions
+        if question.get("category") == category
+    ]
 
-            references: list[dict[str, Any]] = []
-
-            if reference_excerpt.strip():
-                references.append(
-                    {
-                        "text": (
-                            reference_excerpt.strip()
-                        ),
-                        "filename": (
-                            reference_document.strip()
-                        ),
-                        "article": (
-                            reference_article.strip()
-                            or None
-                        ),
-                        "score": 0.91,
-                    }
-                )
-
-            payload = {
-                "project": {
-                    "title": (
-                        project_title.strip()
-                        or "Projet IA"
-                    ),
-                    "description": (
-                        project_description.strip()
-                    ),
-                },
-                "machine_learning_result": {
-                    "prediction": classification,
-                    "confidence": (
-                        confidence_percent / 100
-                    ),
-                    "risks": risks,
-                },
-                "deep_learning_result": {
-                    "justification": (
-                        justification.strip()
-                    ),
-                    "recommendations": (
-                        recommendations
-                    ),
-                },
-                "rag_result": {
-                    "references": references,
-                },
-            }
-
-            try:
-                status = st.empty()
-                progress = st.progress(0)
-
-                status.info("📄 Analyse du projet...")
-                progress.progress(15)
-
-                time.sleep(0.4)
-
-                status.info("🤖 Analyse Machine Learning...")
-                progress.progress(35)
-
-                time.sleep(0.4)
-
-                status.info("🧠 Analyse Deep Learning...")
-                progress.progress(55)
-
-                time.sleep(0.4)
-
-                status.info("📚 Recherche réglementaire (RAG)...")
-                progress.progress(75)
-
-                with st.spinner("Consultation des connaissances..."):
-                    generated_report = generate_report(payload)
-
-                progress.progress(95)
-
-                time.sleep(0.3)
-
-                status.success("✅ Rapport PRUDENCIA généré")
-                progress.progress(100)
-
-                st.session_state[
-                    "prudencia_generated_report"
-                ] = generated_report
-
-                history = st.session_state.setdefault(
-                    "prudencia_history",
-                    []
-                )
-
-                history.insert(
-                    0,
-                    generated_report,
-                )
-
-                history[:] = history[:10]
-
-                st.success("Rapport généré avec succès.")
-
-            except RuntimeError as error:
-                st.error(str(error))
-
-
-    generated_report = st.session_state.get(
-        "prudencia_generated_report"
-    )
-
-    history = st.session_state.get(
-        "prudencia_history",
-        []
-    )
+    if not category_questions:
+        continue
 
     st.divider()
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric(
-        "Analyses",
-        len(history),
+    st.subheader(
+        section_titles.get(
+            category,
+            category.title(),
+        )
     )
 
-    high_risk = sum(
-        1
-        for r in history
-        if "haut"
-        in str(
-            r.get("ai_act", {})
-            .get("classification", "")
-        ).lower()
-    )
-
-    c2.metric(
-        "Haut risque",
-        high_risk,
-    )
-
-    c3.metric(
-        "Conformité",
-        generated_report.get(
-            "conformity_status",
-            "—",
-        ),
-    )
-
-    c4.metric(
-        "Version",
-        generated_report.get(
-            "version",
-            "1.0",
-        ),
-    )
-
-    if generated_report:
-        display_report(
-            generated_report
+    for question in category_questions:
+        displayed_ids.add(
+            str(question["id"])
         )
 
-    history = st.session_state.get(
-        "prudencia_history",
-        []
+        value = render_question(question)
+        code = str(question["code"])
+
+        if is_answered(
+            value,
+            str(question["answer_type"]),
+        ):
+            answers[code] = value
+
+remaining_questions = [
+    question
+    for question in questions
+    if str(question["id"]) not in displayed_ids
+]
+
+if remaining_questions:
+    st.divider()
+    st.subheader("🧩 Informations complémentaires")
+
+    for question in remaining_questions:
+        value = render_question(question)
+        code = str(question["code"])
+
+        if is_answered(
+            value,
+            str(question["answer_type"]),
+        ):
+            answers[code] = value
+
+
+# =============================================================================
+# PROGRESSION
+# =============================================================================
+
+required_questions = [
+    question
+    for question in questions
+    if question.get("is_required")
+]
+
+missing_questions = [
+    question
+    for question in required_questions
+    if str(question["code"]) not in answers
+]
+
+answered_required = (
+    len(required_questions)
+    - len(missing_questions)
+)
+
+st.divider()
+st.subheader("Progression")
+
+st.progress(
+    (
+        answered_required / len(required_questions)
+        if required_questions
+        else 1.0
+    ),
+    text=(
+        f"{answered_required}/{len(required_questions)} "
+        "questions obligatoires renseignées"
+    ),
+)
+
+if missing_questions:
+    st.warning(
+        f"{len(missing_questions)} question(s) "
+        "obligatoire(s) reste(nt) à compléter."
+    )
+else:
+    st.success(
+        "Toutes les questions obligatoires sont renseignées."
     )
 
-    if history:
-        st.divider()
-        st.header("🕘 Historique des analyses")
 
-        for i, report in enumerate(history, start=1):
+# =============================================================================
+# ANALYSE COMPLÈTE
+# =============================================================================
 
-            project = report.get("project", {})
+if st.button(
+    "🚀 Lancer l'analyse complète",
+    type="primary",
+    use_container_width=True,
+):
+    if not project_name.strip():
+        st.error("Le nom du projet est obligatoire.")
 
-            title = project.get(
-                "title",
-                "Projet IA",
-            )
+    elif missing_questions:
+        st.error(
+            "Le questionnaire ne peut pas encore être envoyé."
+        )
 
-            classification = (
-                report.get("ai_act", {})
-                .get("classification", "—")
-            )
-
-            with st.expander(
-                f"{i}. {title} - {classification}"
-            ):
+        with st.expander(
+            "Questions obligatoires manquantes",
+            expanded=True,
+        ):
+            for question in missing_questions:
                 st.write(
-                    project.get(
-                        "description",
-                        ""
-                    )
+                    "- "
+                    + question_label(
+                        question
+                    ).replace(" *", "")
                 )
 
-                st.json(report)
+    else:
+        progress = st.progress(0)
+        status = st.empty()
+
+        try:
+            status.info(
+                "1/4 — Création du projet et enregistrement..."
+            )
+            progress.progress(25)
+
+            submission = api_request(
+                "POST",
+                SUBMIT_ENDPOINT,
+                {
+                    "project_name": project_name.strip(),
+                    "project_description": (
+                        project_description.strip()
+                        or None
+                    ),
+                    "respondent_id": None,
+                    "answers": answers,
+                },
+            )
+
+            features = submission["features"]
+
+            status.info(
+                "2/4 — Prédiction Random Forest..."
+            )
+            progress.progress(50)
+
+            raw_prediction = ml_predict(
+                features
+            )
+
+            prediction = extract_prediction_result(
+                raw_prediction
+            )
+
+            status.info(
+                "3/4 — Génération du rapport métier..."
+            )
+            progress.progress(75)
+
+            report_response = api_request(
+                "POST",
+                REPORT_ML_ENDPOINT,
+                {
+                    "project_name": project_name.strip(),
+                    "project_id": str(
+                        submission["project_id"]
+                    ),
+                    "response_id": str(
+                        submission["response_id"]
+                    ),
+                    "prediction": prediction["prediction"],
+                    "confidence": prediction["confidence"],
+                    "probabilities": prediction["probabilities"],
+                    "features": features,
+                },
+            )
+
+            report = report_response.get("report")
+
+            if not isinstance(report, dict):
+                raise APIError(
+                    "Le générateur de rapport n'a pas "
+                    "renvoyé de rapport valide."
+                )
+
+            progress.progress(100)
+            status.success(
+                "4/4 — Rapport généré."
+            )
+
+            st.session_state[
+                "questionnaire_last_report"
+            ] = report
+
+        except (APIError, KeyError, TypeError) as error:
+            progress.empty()
+            status.empty()
+
+            st.error(
+                f"L'analyse n'a pas pu être terminée : {error}"
+            )
+
+
+# =============================================================================
+# RAPPORT CONSERVÉ EN SESSION
+# =============================================================================
+
+saved_report = st.session_state.get(
+    "questionnaire_last_report"
+)
+
+if isinstance(saved_report, dict):
+    display_business_report(saved_report)

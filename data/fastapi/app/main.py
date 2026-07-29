@@ -38,18 +38,27 @@ from app.api.training_history import (
 )
 from app.api.ml import router as ml_router
 from app.api.reports import router as reports_router
+from app.api.document_analysis import (
+    router as document_analysis_router,
+)
+from app.api.questionnaire_ml import (
+    router as questionnaire_ml_router,
+)
+
 
 app = FastAPI(
     title="PRUDENCIA API",
     version="0.2.0",
 )
-
 app.include_router(model_registry_router)
 app.include_router(fine_tuning_router)
 app.include_router(rag_router)
 app.include_router(training_history_router)
 app.include_router(ml_router)
 app.include_router(reports_router)
+app.include_router(document_analysis_router)
+app.include_router(questionnaire_ml_router)
+
 
 class AnalyseRequest(BaseModel):
     description: str

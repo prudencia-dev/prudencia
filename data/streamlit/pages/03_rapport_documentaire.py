@@ -2,89 +2,245 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from typing import Any
 
 import requests
 import streamlit as st
-import time
+
 
 API_URL = os.getenv(
     "PRUDENCIA_API_URL",
     os.getenv("API_URL", "http://api:8000"),
 ).rstrip("/")
 
+COLLECTION_NAME = os.getenv(
+    "PRUDENCIA_RAG_COLLECTION",
+    "prudencia_legal_documents",
+)
+
+FINE_TUNED_MODEL_NAME = os.getenv(
+    "PRUDENCIA_FINE_TUNED_MODEL_NAME",
+    "juribert",
+)
+
+EXTRACT_ENDPOINT = "/document-analysis/extract"
+PREDICT_ENDPOINT = "/fine-tuning/predict"
+RAG_SEARCH_ENDPOINT = "/rag/search"
+REPORT_ENDPOINT = "/reports/generate"
+
+REQUEST_TIMEOUT = 120
+DEFAULT_RAG_LIMIT = 5
+MAX_MODEL_TEXT_LENGTH = 12000
+MAX_RAG_QUERY_LENGTH = 6000
+
 
 st.set_page_config(
-    page_title="Rapport Documentaire",
-    page_icon="📚",
+    page_title="Rapport documentaire",
+    page_icon="📘",
     layout="wide",
 )
 
 
-def generate_report(
-    payload: dict[str, Any],
+class PrudenciaAPIError(RuntimeError):
+    pass
+
+
+def parse_response(
+    response: requests.Response,
+    endpoint: str,
 ) -> dict[str, Any]:
-    """
-    Appelle l'API de génération du rapport PRUDENCIA.
-    """
-
-    try:
-        response = requests.post(
-            f"{API_URL}/reports/generate",
-            json=payload,
-            timeout=120,
-        )
-
-    except requests.Timeout as error:
-        raise RuntimeError(
-            "Le délai de génération du rapport a été dépassé."
-        ) from error
-
-    except requests.ConnectionError as error:
-        raise RuntimeError(
-            "Impossible de contacter l'API PRUDENCIA."
-        ) from error
-
-    except requests.RequestException as error:
-        raise RuntimeError(
-            f"Erreur réseau : {error}"
-        ) from error
-
     if response.status_code != 200:
         try:
-            error_detail = response.json()
+            detail = response.json()
         except ValueError:
-            error_detail = response.text
+            detail = response.text
 
-        raise RuntimeError(
-            f"Erreur API {response.status_code} : "
-            f"{error_detail}"
+        raise PrudenciaAPIError(
+            f"Erreur API {response.status_code} "
+            f"sur {endpoint} : {detail}"
         )
 
-    return response.json()
+    try:
+        result = response.json()
+    except ValueError as error:
+        raise PrudenciaAPIError(
+            f"L'endpoint {endpoint} n'a pas renvoyé de JSON valide."
+        ) from error
+
+    if not isinstance(result, dict):
+        raise PrudenciaAPIError(
+            f"L'endpoint {endpoint} n'a pas renvoyé un objet JSON."
+        )
+
+    return result
+
+
+def post_json(
+    endpoint: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        response = requests.post(
+            f"{API_URL}{endpoint}",
+            json=payload,
+            timeout=REQUEST_TIMEOUT,
+        )
+    except requests.RequestException as error:
+        raise PrudenciaAPIError(
+            f"Impossible de contacter {endpoint} : {error}"
+        ) from error
+
+    return parse_response(response, endpoint)
+
+
+def extract_pdf(
+    uploaded_pdf: Any,
+) -> dict[str, Any]:
+    try:
+        response = requests.post(
+            f"{API_URL}{EXTRACT_ENDPOINT}",
+            files={
+                "file": (
+                    uploaded_pdf.name,
+                    uploaded_pdf.getvalue(),
+                    "application/pdf",
+                )
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
+    except requests.RequestException as error:
+        raise PrudenciaAPIError(
+            f"Impossible d'envoyer le PDF à l'API : {error}"
+        ) from error
+
+    return parse_response(
+        response,
+        EXTRACT_ENDPOINT,
+    )
+
+
+def normalize_prediction(
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    prediction = (
+        result.get("prediction")
+        or result.get("label")
+        or result.get("classification")
+        or "À déterminer"
+    )
+
+    normalized: dict[str, Any] = {
+        "prediction": str(prediction),
+        "classification": str(prediction),
+        "confidence": result.get("confidence"),
+    }
+
+    probabilities = result.get("probabilities")
+
+    if isinstance(probabilities, dict):
+        normalized["probabilities"] = probabilities
+
+    if result.get("model_name"):
+        normalized["model_name"] = result["model_name"]
+
+    return normalized
+
+
+def normalize_references(
+    rag_result: dict[str, Any],
+) -> list[dict[str, Any]]:
+    raw_results = (
+        rag_result.get("results")
+        or rag_result.get("references")
+        or []
+    )
+
+    if not isinstance(raw_results, list):
+        return []
+
+    references: list[dict[str, Any]] = []
+
+    for item in raw_results:
+        if not isinstance(item, dict):
+            references.append(
+                {
+                    "text": str(item),
+                    "filename": "Document réglementaire",
+                }
+            )
+            continue
+
+        metadata = item.get("metadata")
+
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        reference: dict[str, Any] = {
+            "text": str(
+                item.get("text")
+                or item.get("content")
+                or item.get("excerpt")
+                or ""
+            ),
+            "filename": str(
+                item.get("filename")
+                or item.get("source")
+                or metadata.get("filename")
+                or metadata.get("source")
+                or "Document réglementaire"
+            ),
+        }
+
+        article = (
+            item.get("article")
+            or metadata.get("article")
+        )
+
+        if article:
+            reference["article"] = str(article)
+
+        similarity = (
+            item.get("similarity")
+            if isinstance(item.get("similarity"), (int, float))
+            else item.get("score")
+        )
+
+        if isinstance(similarity, (int, float)):
+            reference["score"] = float(similarity)
+
+        references.append(reference)
+
+    return references
+
+
+def format_confidence(
+    value: Any,
+) -> str:
+    if not isinstance(value, (int, float)):
+        return "—"
+
+    numeric_value = float(value)
+
+    if numeric_value <= 1:
+        return f"{numeric_value:.1%}"
+
+    return f"{numeric_value:.1f} %"
 
 
 def display_classification(
     classification: str,
 ) -> None:
-    """
-    Affiche visuellement la classification AI Act.
-    """
-
     normalized = classification.lower()
 
     if "interdit" in normalized:
         st.error(f"⛔ {classification}")
-
     elif "haut" in normalized or "élevé" in normalized:
         st.error(f"🔴 {classification}")
-
     elif "limité" in normalized or "modéré" in normalized:
         st.warning(f"🟠 {classification}")
-
     elif "minimal" in normalized or "faible" in normalized:
         st.success(f"🟢 {classification}")
-
     else:
         st.info(f"🔵 {classification}")
 
@@ -92,258 +248,154 @@ def display_classification(
 def display_report(
     report: dict[str, Any],
 ) -> None:
-    """
-    Affiche la vue client du rapport PRUDENCIA.
-    """
-
-    project = report.get("project", {})
-    ai_act = report.get("ai_act", {})
-    risks = report.get("risks", [])
-    recommendations = report.get(
-        "recommendations",
-        [],
-    )
-    legal_references = report.get(
-        "legal_references",
-        [],
-    )
+    project = report.get("project") or {}
+    ai_act = report.get("ai_act") or {}
+    risks = report.get("risks") or []
+    recommendations = report.get("recommendations") or []
+    legal_references = report.get("legal_references") or []
 
     st.divider()
-    st.header("Rapport de pré-diagnostic")
+    st.header("📘 Rapport de pré-diagnostic")
 
     st.subheader(
-        project.get(
-            "title",
-            "Projet IA",
-        )
+        str(project.get("title") or "Projet IA")
     )
 
-    project_description = project.get(
-        "description",
-        "",
-    )
+    if project.get("description"):
+        st.write(str(project["description"]))
 
-    if project_description:
-        st.write(project_description)
-
-    metadata_columns = st.columns(3)
-
-    metadata_columns[0].metric(
-        "Version",
-        report.get("version", "1.0"),
-    )
-
-    metadata_columns[1].metric(
-        "Risques",
-        len(risks),
-    )
-
-    metadata_columns[2].metric(
-        "Recommandations",
-        len(recommendations),
-    )
-
-    st.caption(
-        f"Identifiant d'analyse : "
-        f"{report.get('analysis_id', 'Non disponible')}"
-    )
+    columns = st.columns(4)
+    columns[0].metric("Version", report.get("version", "1.0"))
+    columns[1].metric("Risques", len(risks))
+    columns[2].metric("Recommandations", len(recommendations))
+    columns[3].metric("Références", len(legal_references))
 
     st.divider()
 
-    classification_column, conformity_column = st.columns(2)
+    left, right = st.columns(2)
 
-    with classification_column:
+    with left:
         st.subheader("Classification AI Act")
 
         classification = str(
-            ai_act.get(
-                "classification",
-                "À déterminer",
-            )
+            ai_act.get("classification")
+            or ai_act.get("prediction")
+            or "À déterminer"
         )
 
-        display_classification(
-            classification
+        display_classification(classification)
+
+        st.metric(
+            "Indice de confiance",
+            format_confidence(
+                ai_act.get("confidence")
+            ),
         )
 
-        confidence = ai_act.get(
-            "confidence"
-        )
-
-        if isinstance(
-            confidence,
-            (int, float),
-        ):
-            st.metric(
-                "Indice de confiance",
-                f"{float(confidence):.1%}",
-            )
-
-    with conformity_column:
+    with right:
         st.subheader("État de conformité")
-
-        conformity_status = report.get(
-            "conformity_status",
-            "À déterminer",
-        )
-
         st.info(
-            str(conformity_status)
+            str(
+                report.get("conformity_status")
+                or "À déterminer"
+            )
         )
 
-    justification = ai_act.get(
-        "justification",
-        "",
-    )
+    justification = ai_act.get("justification")
 
     if justification:
         st.subheader("Justification")
-        st.write(justification)
+        st.write(str(justification))
 
     st.divider()
     st.subheader("Risques identifiés")
 
     if not risks:
-        st.info(
-            "Aucun risque spécifique n'a été identifié."
-        )
-
+        st.info("Aucun risque spécifique n'a été identifié.")
     else:
-        for index, risk in enumerate(
-            risks,
-            start=1,
-        ):
-            if not isinstance(risk, dict):
-                st.warning(
-                    f"{index}. {risk}"
-                )
-                continue
-
-            category = risk.get(
-                "category",
-                "Général",
-            )
-
-            level = risk.get(
-                "level",
-                "À évaluer",
-            )
-
-            description = risk.get(
-                "description",
-                "",
-            )
-
-            with st.container(
-                border=True
-            ):
-                st.markdown(
-                    f"**{index}. {category} — {level}**"
-                )
-                st.write(description)
+        for index, risk in enumerate(risks, start=1):
+            if isinstance(risk, dict):
+                with st.container(border=True):
+                    st.markdown(
+                        f"**{index}. "
+                        f"{risk.get('category', 'Général')} — "
+                        f"{risk.get('level', 'À évaluer')}**"
+                    )
+                    st.write(
+                        str(risk.get("description") or "")
+                    )
+            else:
+                st.write(f"{index}. {risk}")
 
     st.divider()
     st.subheader("Recommandations")
 
     if not recommendations:
-        st.info(
-            "Aucune recommandation n'a été générée."
-        )
-
+        st.info("Aucune recommandation n'a été générée.")
     else:
-        for recommendation in recommendations:
-            if not isinstance(
-                recommendation,
-                dict,
-            ):
-                st.write(
-                    f"- {recommendation}"
-                )
-                continue
-
-            priority = recommendation.get(
-                "priority",
-                "—",
-            )
-
-            category = recommendation.get(
-                "category",
-                "Général",
-            )
-
-            action = recommendation.get(
-                "action",
-                "",
-            )
-
-            with st.container(
-                border=True
-            ):
-                st.markdown(
-                    f"**Priorité {priority} — {category}**"
-                )
-                st.write(action)
+        for index, recommendation in enumerate(
+            recommendations,
+            start=1,
+        ):
+            if isinstance(recommendation, dict):
+                with st.container(border=True):
+                    st.markdown(
+                        f"**Priorité "
+                        f"{recommendation.get('priority', '—')} — "
+                        f"{recommendation.get('category', 'Général')}**"
+                    )
+                    st.write(
+                        str(recommendation.get("action") or "")
+                    )
+            else:
+                st.write(f"{index}. {recommendation}")
 
     st.divider()
     st.subheader("Références réglementaires")
 
     if not legal_references:
         st.info(
-            "Aucune référence réglementaire "
-            "n'a été associée."
+            "Aucune référence réglementaire n'a été associée."
         )
-
     else:
         for index, reference in enumerate(
             legal_references,
             start=1,
         ):
-            if not isinstance(
-                reference,
-                dict,
-            ):
+            if not isinstance(reference, dict):
                 st.write(reference)
                 continue
 
-            document = reference.get(
-                "document",
-                "Document réglementaire",
+            document = (
+                reference.get("document")
+                or reference.get("filename")
+                or "Document réglementaire"
             )
 
-            article = reference.get(
-                "article",
-            )
-
-            excerpt = reference.get(
-                "excerpt",
-                "",
-            )
-
-            reference_title = (
-                f"{index}. {document}"
-            )
+            article = reference.get("article")
+            title = f"{index}. {document}"
 
             if article:
-                reference_title += (
-                    f" — {article}"
-                )
+                title += f" — {article}"
 
             with st.expander(
-                reference_title
+                title,
+                expanded=index == 1,
             ):
-                st.write(excerpt)
+                st.write(
+                    str(
+                        reference.get("excerpt")
+                        or reference.get("text")
+                        or ""
+                    )
+                )
 
-    conclusion = report.get(
-        "conclusion",
-        "",
-    )
+    conclusion = report.get("conclusion")
 
     if conclusion:
         st.divider()
         st.subheader("Conclusion")
-        st.write(conclusion)
-
-    st.divider()
+        st.write(str(conclusion))
 
     report_json = json.dumps(
         report,
@@ -352,389 +404,207 @@ def display_report(
         default=str,
     )
 
+    st.divider()
+
     st.download_button(
-        label="⬇️ Télécharger le rapport JSON",
+        "⬇️ Télécharger le rapport JSON",
         data=report_json,
-        file_name="rapport_prudencia.json",
+        file_name="rapport_documentaire_prudencia.json",
         mime="application/json",
         use_container_width=True,
     )
 
-    if st.button(
-        "🆕 Nouvelle analyse",
-        use_container_width=True,
-    ):
-        st.session_state.pop(
-            "prudencia_generated_report",
-            None,
-        )
-        st.rerun()
-
-    with st.expander(
-        "Afficher le JSON complet"
-    ):
+    with st.expander("Afficher les données techniques"):
         st.json(report)
 
 
-st.title("📚 Rapports d'analyse")
+st.session_state.setdefault("documentary_report", None)
+st.session_state.setdefault("documentary_pipeline", None)
+st.session_state.setdefault("documentary_history", [])
 
-tab_doc, tab_ml = st.tabs(
-    [
-        "📘 Analyse documentaire",
-        "📗 Analyse questionnaire",
-    ]
+
+st.title("PRUDENCIA")
+st.subheader("Pré-diagnostic documentaire d'un projet IA")
+
+st.write(
+    "Déposez le document décrivant votre projet. "
+    "PRUDENCIA extrait son contenu avec FastAPI, "
+    "le classe avec JuriBERT, interroge le corpus juridique "
+    "et génère automatiquement le rapport."
 )
 
-tab_doc, tab_ml = st.tabs(
-    [
-        "📘 Analyse documentaire",
-        "📗 Analyse questionnaire",
-    ]
-)
-
-with tab_doc:
-
-    st.success(
-        "🟢 Rapport documentaire"
+with st.form(
+    "documentary_analysis_form",
+    clear_on_submit=False,
+):
+    project_title = st.text_input(
+        "Nom du projet",
+        placeholder="Exemple : Assistant de recrutement",
     )
 
-    st.success(
-        "🟢 MVP PRUDENCIA - Démonstration"
+    uploaded_pdf = st.file_uploader(
+        "Document de présentation du projet",
+        type=["pdf"],
     )
 
-    st.caption(
-        "Génération d'un pré-diagnostic réglementaire "
-        "structuré pour un projet d'intelligence artificielle."
+    rag_limit = st.slider(
+        "Nombre de références réglementaires",
+        min_value=3,
+        max_value=10,
+        value=DEFAULT_RAG_LIMIT,
     )
 
-    st.info(
-        "Cette page de démonstration assemble les informations "
-        "du projet, le résultat du questionnaire, l'analyse "
-        "textuelle et les références réglementaires."
+    launch = st.form_submit_button(
+        "🚀 Lancer l'analyse complète",
+        type="primary",
+        use_container_width=True,
     )
 
-    with st.form(
-        "prudencia_report_form"
-    ):
-        st.subheader("1. Projet analysé")
 
-        project_title = st.text_input(
-            "Nom du projet",
-            value="Assistant de recrutement",
-        )
+if launch:
+    if not project_title.strip():
+        st.error("Le nom du projet est obligatoire.")
+    elif uploaded_pdf is None:
+        st.error("Veuillez sélectionner un fichier PDF.")
+    else:
+        progress = st.progress(0)
+        status = st.empty()
 
-        project_description = st.text_area(
-            "Description du projet",
-            value=(
-                "Système d'intelligence artificielle qui analyse "
-                "les CV, évalue les candidatures et classe "
-                "automatiquement les candidats."
-            ),
-            height=130,
-        )
+        try:
+            status.info("1/5 — Envoi et extraction du PDF")
+            progress.progress(15)
 
-        st.subheader("2. Résultat du questionnaire")
+            extraction = extract_pdf(uploaded_pdf)
+            extracted_text = str(
+                extraction.get("text") or ""
+            ).strip()
 
-        classification = st.selectbox(
-            "Classification AI Act",
-            [
-                "Haut risque",
-                "Risque limité",
-                "Risque minimal",
-                "Pratique interdite",
-                "À déterminer",
-            ],
-        )
+            if not extracted_text:
+                raise PrudenciaAPIError(
+                    "L'API n'a renvoyé aucun texte extrait."
+                )
 
-        confidence_percent = st.slider(
-            "Indice de confiance",
-            min_value=0,
-            max_value=100,
-            value=87,
-        )
+            status.info("2/5 — Analyse avec JuriBERT Fine-Tuné")
+            progress.progress(35)
 
-        risk_description = st.text_area(
-            "Risque principal identifié",
-            value=(
-                "Le système intervient dans le domaine de "
-                "l'emploi et peut influencer l'accès d'une "
-                "personne à une opportunité professionnelle."
-            ),
-            height=100,
-        )
-
-        st.subheader("3. Analyse textuelle")
-
-        justification = st.text_area(
-            "Justification",
-            value=(
-                "Le projet automatise une partie du processus "
-                "de sélection des candidats. Il doit donc faire "
-                "l'objet d'une surveillance humaine et d'une "
-                "documentation renforcée."
-            ),
-            height=120,
-        )
-
-        recommendation = st.text_area(
-            "Recommandation principale",
-            value=(
-                "Mettre en place une supervision humaine, "
-                "documenter les critères de classement et "
-                "permettre la contestation des décisions."
-            ),
-            height=100,
-        )
-
-        st.subheader("4. Référence réglementaire")
-
-        reference_document = st.text_input(
-            "Document",
-            value="Règlement européen sur l'intelligence artificielle",
-        )
-
-        reference_article = st.text_input(
-            "Article ou annexe",
-            value="Annexe III",
-        )
-
-        reference_excerpt = st.text_area(
-            "Extrait réglementaire",
-            value=(
-                "Les systèmes d'IA destinés au recrutement "
-                "ou à la sélection de personnes peuvent relever "
-                "de la catégorie des systèmes à haut risque."
-            ),
-            height=110,
-        )
-
-        submitted = st.form_submit_button(
-            "🚀 Générer le rapport PRUDENCIA",
-            type="primary",
-            use_container_width=True,
-        )
-
-
-    if submitted:
-        if not project_description.strip():
-            st.error(
-                "La description du projet est obligatoire."
+            prediction = post_json(
+                PREDICT_ENDPOINT,
+                {
+                    "text": extracted_text[
+                        :MAX_MODEL_TEXT_LENGTH
+                    ],
+                    "model_name": FINE_TUNED_MODEL_NAME,
+                },
             )
 
-        else:
-            risks: list[dict[str, Any]] = []
+            status.info(
+                "3/5 — Recherche réglementaire dans le RAG"
+            )
+            progress.progress(60)
 
-            if risk_description.strip():
-                risks.append(
-                    {
-                        "category": "AI Act",
-                        "level": (
-                            "Élevé"
-                            if classification
-                            == "Haut risque"
-                            else "À évaluer"
-                        ),
-                        "description": (
-                            risk_description.strip()
-                        ),
-                    }
-                )
+            rag_result = post_json(
+                RAG_SEARCH_ENDPOINT,
+                {
+                    "query": extracted_text[
+                        :MAX_RAG_QUERY_LENGTH
+                    ],
+                    "collection_name": COLLECTION_NAME,
+                    "limit": rag_limit,
+                },
+            )
 
-            recommendations: list[str] = []
+            status.info("4/5 — Assemblage du pré-diagnostic")
+            progress.progress(80)
 
-            if recommendation.strip():
-                recommendations.append(
-                    recommendation.strip()
-                )
-
-            references: list[dict[str, Any]] = []
-
-            if reference_excerpt.strip():
-                references.append(
-                    {
-                        "text": (
-                            reference_excerpt.strip()
-                        ),
-                        "filename": (
-                            reference_document.strip()
-                        ),
-                        "article": (
-                            reference_article.strip()
-                            or None
-                        ),
-                        "score": 0.91,
-                    }
-                )
-
-            payload = {
+            report_payload = {
                 "project": {
-                    "title": (
-                        project_title.strip()
-                        or "Projet IA"
-                    ),
-                    "description": (
-                        project_description.strip()
-                    ),
-                },
-                "machine_learning_result": {
-                    "prediction": classification,
-                    "confidence": (
-                        confidence_percent / 100
-                    ),
-                    "risks": risks,
-                },
-                "deep_learning_result": {
-                    "justification": (
-                        justification.strip()
-                    ),
-                    "recommendations": (
-                        recommendations
+                    "title": project_title.strip(),
+                    "description": extracted_text,
+                    "source_filename": uploaded_pdf.name,
+                    "page_count": extraction.get(
+                        "page_count"
                     ),
                 },
+                "machine_learning_result": {},
+                "deep_learning_result": normalize_prediction(
+                    prediction
+                ),
                 "rag_result": {
-                    "references": references,
+                    "references": normalize_references(
+                        rag_result
+                    ),
                 },
             }
 
-            try:
-                status = st.empty()
-                progress = st.progress(0)
+            status.info("5/5 — Génération du rapport")
+            progress.progress(90)
 
-                status.info("📄 Analyse du projet...")
-                progress.progress(15)
+            report = post_json(
+                REPORT_ENDPOINT,
+                report_payload,
+            )
 
-                time.sleep(0.4)
+            progress.progress(100)
+            status.success(
+                "Analyse terminée et rapport généré."
+            )
 
-                status.info("🤖 Analyse Machine Learning...")
-                progress.progress(35)
+            st.session_state.documentary_report = report
+            st.session_state.documentary_pipeline = {
+                "generated_at": datetime.now().isoformat(),
+                "source_filename": uploaded_pdf.name,
+                "page_count": extraction.get("page_count"),
+                "character_count": extraction.get(
+                    "character_count"
+                ),
+                "prediction": prediction,
+                "rag": rag_result,
+            }
 
-                time.sleep(0.4)
+            st.session_state.documentary_history.insert(
+                0,
+                {
+                    "project_title": project_title.strip(),
+                    "filename": uploaded_pdf.name,
+                    "report": report,
+                },
+            )
 
-                status.info("🧠 Analyse Deep Learning...")
-                progress.progress(55)
+            del st.session_state.documentary_history[10:]
 
-                time.sleep(0.4)
-
-                status.info("📚 Recherche réglementaire (RAG)...")
-                progress.progress(75)
-
-                with st.spinner("Consultation des connaissances..."):
-                    generated_report = generate_report(payload)
-
-                progress.progress(95)
-
-                time.sleep(0.3)
-
-                status.success("✅ Rapport PRUDENCIA généré")
-                progress.progress(100)
-
-                st.session_state[
-                    "prudencia_generated_report"
-                ] = generated_report
-
-                history = st.session_state.setdefault(
-                    "prudencia_history",
-                    []
-                )
-
-                history.insert(
-                    0,
-                    generated_report,
-                )
-
-                history[:] = history[:10]
-
-                st.success("Rapport généré avec succès.")
-
-            except RuntimeError as error:
-                st.error(str(error))
+        except PrudenciaAPIError as error:
+            progress.empty()
+            status.empty()
+            st.error(str(error))
 
 
-    generated_report = st.session_state.get(
-        "prudencia_generated_report"
-    )
+report = st.session_state.documentary_report
 
-    history = st.session_state.get(
-        "prudencia_history",
-        []
-    )
+if isinstance(report, dict):
+    display_report(report)
 
-    st.divider()
 
-    c1, c2, c3, c4 = st.columns(4)
+pipeline = st.session_state.documentary_pipeline
 
-    c1.metric(
-        "Analyses",
-        len(history),
-    )
+if isinstance(pipeline, dict):
+    with st.expander("Voir le pipeline exécuté"):
+        columns = st.columns(3)
 
-    high_risk = sum(
-        1
-        for r in history
-        if "haut"
-        in str(
-            r.get("ai_act", {})
-            .get("classification", "")
-        ).lower()
-    )
-
-    c2.metric(
-        "Haut risque",
-        high_risk,
-    )
-
-    c3.metric(
-        "Conformité",
-        generated_report.get(
-            "conformity_status",
-            "—",
-        ),
-    )
-
-    c4.metric(
-        "Version",
-        generated_report.get(
-            "version",
-            "1.0",
-        ),
-    )
-
-    if generated_report:
-        display_report(
-            generated_report
+        columns[0].metric(
+            "Pages",
+            pipeline.get("page_count") or 0,
         )
 
-    history = st.session_state.get(
-        "prudencia_history",
-        []
-    )
+        columns[1].metric(
+            "Caractères",
+            pipeline.get("character_count") or 0,
+        )
 
-    if history:
-        st.divider()
-        st.header("🕘 Historique des analyses")
+        rag_results = pipeline.get("rag") or {}
 
-        for i, report in enumerate(history, start=1):
+        columns[2].metric(
+            "Références",
+            len(rag_results.get("results") or []),
+        )
 
-            project = report.get("project", {})
-
-            title = project.get(
-                "title",
-                "Projet IA",
-            )
-
-            classification = (
-                report.get("ai_act", {})
-                .get("classification", "—")
-            )
-
-            with st.expander(
-                f"{i}. {title} - {classification}"
-            ):
-                st.write(
-                    project.get(
-                        "description",
-                        ""
-                    )
-                )
-
-                st.json(report)
+        st.json(pipeline)
