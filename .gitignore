@@ -6,72 +6,46 @@
 data/postgres/
 data/chromadb/
 data/uploads/
+data/models/
+
+# Données et artefacts FastAPI
+data/fastapi/exports/
+data/fastapi/logs/
+data/fastapi/models/
+data/fastapi/uploads/
+data/fastapi/checkpoints/
 
 # Sauvegardes et journaux
 backups/
 logs/
+*.log
 
 # Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+.cache/
 
-# Modèles et fichiers volumineux
+# Modèles IA et checkpoints
+**/checkpoints/
+*.safetensors
+*.ckpt
 *.pt
 *.pth
 *.bin
 *.joblib
 *.pkl
 
-# Système et éditeurs
-.DS_Store
-.vscode/
-.idea/
-
 # Fichiers temporaires
-*.log
 *.tmp
 *.bak
 *.swp
+*~
 
-# macOS
+# Systèmes et éditeurs
+.DS_Store
 .AppleDouble
 .LSOverride
-
-# Données persistantes
-data/postgres/
-data/chromadb/
-data/uploads/
-data/models/
-
-# Modèles IA
-data/fastapi/models/
-data/fastapi/checkpoints/
-**/checkpoints/
-**/*.safetensors
-
-# HuggingFace / Fine-Tuning
-*.safetensors
-*.ckpt
-*.pt
-*.pth
-*.bin
-
-# Cache
-.cache/
-
-# Fine Tuning
-data/fastapi/models/
-
-# Données et artefacts FastAPI
-data/fastapi/datasets/
-data/fastapi/exports/
-data/fastapi/logs/
-data/fastapi/models/
-data/fastapi/uploads/
-
-# Modèles et checkpoints
-**/checkpoints/
-*.safetensors
-*.ckpt
+.vscode/
+.idea/
