@@ -12,7 +12,11 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import (
     accuracy_score,
+    balanced_accuracy_score,
+    classification_report,
+    confusion_matrix,
     f1_score,
+    matthews_corrcoef,
     precision_score,
     recall_score,
 )
@@ -54,11 +58,22 @@ class MachineLearningTrainer:
         / "random_forest.joblib"
     )
 
+    # Version unique utilisée par l'API, l'historique,
+    # les rapports et la réinitialisation.
+    MODEL_VERSION = "v1.1.0"
+
     def __init__(
         self,
-        n_estimators: int = 100,
+        n_estimators: int = 300,
         max_depth: int | None = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        max_features: str | None = "sqrt",
+        criterion: str = "gini",
+        bootstrap: bool = True,
+        class_weight: str | None = None,
         random_state: int = 42,
+        test_size: float = 0.20,
     ) -> None:
         """
         Initialise les hyperparamètres du Random Forest.
@@ -75,9 +90,33 @@ class MachineLearningTrainer:
             les mêmes résultats.
         """
 
-        self.n_estimators = n_estimators
+        self.n_estimators = int(n_estimators)
         self.max_depth = max_depth
-        self.random_state = random_state
+        self.min_samples_split = int(min_samples_split)
+        self.min_samples_leaf = int(min_samples_leaf)
+        self.max_features = max_features
+        self.criterion = criterion
+        self.bootstrap = bool(bootstrap)
+        self.class_weight = class_weight
+        self.random_state = int(random_state)
+        self.test_size = float(test_size)
+
+        if self.n_estimators < 1:
+            raise ValueError("n_estimators doit être supérieur ou égal à 1.")
+        if self.max_depth is not None and self.max_depth < 1:
+            raise ValueError("max_depth doit être supérieur ou égal à 1.")
+        if self.min_samples_split < 2:
+            raise ValueError("min_samples_split doit être supérieur ou égal à 2.")
+        if self.min_samples_leaf < 1:
+            raise ValueError("min_samples_leaf doit être supérieur ou égal à 1.")
+        if self.max_features not in {"sqrt", "log2", None}:
+            raise ValueError("max_features doit valoir sqrt, log2 ou None.")
+        if self.criterion not in {"gini", "entropy", "log_loss"}:
+            raise ValueError("criterion invalide.")
+        if self.class_weight not in {None, "balanced", "balanced_subsample"}:
+            raise ValueError("class_weight invalide.")
+        if not 0.10 <= self.test_size <= 0.40:
+            raise ValueError("test_size doit être compris entre 0.10 et 0.40.")
 
         self.model: Pipeline | None = None
 
@@ -309,8 +348,14 @@ class MachineLearningTrainer:
         classifier = RandomForestClassifier(
             n_estimators=self.n_estimators,
             max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            max_features=self.max_features,
+            criterion=self.criterion,
+            bootstrap=self.bootstrap,
+            class_weight=self.class_weight,
             random_state=self.random_state,
-            class_weight="balanced",
+            n_jobs=-1,
         )
 
         return Pipeline(
@@ -361,7 +406,7 @@ class MachineLearningTrainer:
 
         test_row_count = max(
             1,
-            round(len(target) * 0.2),
+            round(len(target) * self.test_size),
         )
 
         use_stratification = (
@@ -378,7 +423,7 @@ class MachineLearningTrainer:
         ) = train_test_split(
             features,
             target,
-            test_size=0.2,
+            test_size=self.test_size,
             random_state=self.random_state,
             stratify=(
                 target
@@ -509,38 +554,49 @@ class MachineLearningTrainer:
             x_test,
         )
 
-        metrics = {
-            "accuracy": float(
-                accuracy_score(
-                    y_test,
-                    predictions,
-                )
-            ),
-            "precision": float(
-                precision_score(
-                    y_test,
-                    predictions,
-                    average="weighted",
-                    zero_division=0,
-                )
-            ),
-            "recall": float(
-                recall_score(
-                    y_test,
-                    predictions,
-                    average="weighted",
-                    zero_division=0,
-                )
-            ),
-            "f1": float(
-                f1_score(
-                    y_test,
-                    predictions,
-                    average="weighted",
-                    zero_division=0,
-                )
-            ),
+        class_names = sorted({str(v) for v in list(y_test) + list(predictions)})
+        report = classification_report(
+            y_test, predictions, labels=class_names,
+            output_dict=True, zero_division=0,
+        )
+        per_class = {
+            name: {
+                "precision": float(report.get(name, {}).get("precision", 0.0)),
+                "recall": float(report.get(name, {}).get("recall", 0.0)),
+                "f1": float(report.get(name, {}).get("f1-score", 0.0)),
+                "support": int(report.get(name, {}).get("support", 0)),
+            }
+            for name in class_names
         }
+        matrix = confusion_matrix(y_test, predictions, labels=class_names)
+
+        metrics = {
+            "accuracy": float(accuracy_score(y_test, predictions)),
+            "balanced_accuracy": float(balanced_accuracy_score(y_test, predictions)),
+            "precision": float(precision_score(y_test, predictions, average="weighted", zero_division=0)),
+            "precision_weighted": float(precision_score(y_test, predictions, average="weighted", zero_division=0)),
+            "recall": float(recall_score(y_test, predictions, average="weighted", zero_division=0)),
+            "recall_weighted": float(recall_score(y_test, predictions, average="weighted", zero_division=0)),
+            "f1": float(f1_score(y_test, predictions, average="weighted", zero_division=0)),
+            "f1_weighted": float(f1_score(y_test, predictions, average="weighted", zero_division=0)),
+            "macro_f1": float(f1_score(y_test, predictions, average="macro", zero_division=0)),
+            "mcc": float(matthews_corrcoef(y_test, predictions)),
+            "class_names": class_names,
+            "per_class": per_class,
+            "confusion_matrix": matrix.tolist(),
+        }
+
+        preprocessor = self.model.named_steps["preprocessor"]
+        classifier = self.model.named_steps["classifier"]
+        transformed_names = preprocessor.get_feature_names_out()
+        feature_importance = sorted(
+            [
+                {"feature": str(name), "importance": float(value)}
+                for name, value in zip(transformed_names, classifier.feature_importances_, strict=False)
+            ],
+            key=lambda row: row["importance"],
+            reverse=True,
+        )
 
         self.MODEL_PATH.parent.mkdir(
             parents=True,
@@ -564,6 +620,11 @@ class MachineLearningTrainer:
         execution_time_ms = int(
             execution_time_seconds * 1000
         )
+
+        duplicate_rows = int(dataframe.duplicated().sum())
+        missing_values = int(features.isna().sum().sum())
+        total_cells = int(features.shape[0] * features.shape[1])
+        missing_values_ratio = missing_values / total_cells if total_cells else 0.0
 
         target_distribution = {
             str(label): int(count)
@@ -594,6 +655,12 @@ class MachineLearningTrainer:
                 + ", ".join(rare_classes)
             )
 
+        if duplicate_rows:
+            warnings.append(f"{duplicate_rows} ligne(s) dupliquée(s) détectée(s).")
+
+        if missing_values_ratio >= 0.10:
+            warnings.append("Plus de 10 % des valeurs des Features sont manquantes.")
+
         if len(dataframe) < 100:
             warnings.append(
                 "Le Dataset contient moins de 100 lignes. "
@@ -604,7 +671,7 @@ class MachineLearningTrainer:
         save_training_execution(
             model_type="machine_learning",
             model_name="Random Forest",
-            model_version="v1.0.0",
+            model_version=self.MODEL_VERSION,
             task_name="classification",
             execution_type="training",
             dataset_name=Path(csv_path).name,
@@ -617,7 +684,14 @@ class MachineLearningTrainer:
                 ),
                 "n_estimators": self.n_estimators,
                 "max_depth": self.max_depth,
+                "min_samples_split": self.min_samples_split,
+                "min_samples_leaf": self.min_samples_leaf,
+                "max_features": self.max_features,
+                "criterion": self.criterion,
+                "bootstrap": self.bootstrap,
+                "class_weight": self.class_weight,
                 "random_state": self.random_state,
+                "test_size": self.test_size,
                 "train_rows": len(x_train),
                 "test_rows": len(x_test),
                 "stratification_used": (
@@ -629,6 +703,13 @@ class MachineLearningTrainer:
                 "target_distribution": (
                     target_distribution
                 ),
+                "feature_importance": feature_importance,
+                "training": {
+                    "training_examples": len(x_train),
+                    "validation_examples": len(x_test),
+                    "metrics": metrics,
+                    "feature_importance": feature_importance,
+                },
                 "warnings": warnings,
             },
             execution_time_ms=execution_time_ms,
@@ -638,7 +719,7 @@ class MachineLearningTrainer:
         return {
             "success": True,
             "model_name": "Random Forest",
-            "model_version": "v1.0.0",
+            "model_version": self.MODEL_VERSION,
             "model_path": str(
                 self.MODEL_PATH
             ),
@@ -664,10 +745,32 @@ class MachineLearningTrainer:
             "constant_columns_removed": (
                 constant_columns
             ),
+            "duplicate_rows": duplicate_rows,
+            "missing_values": missing_values,
+            "missing_values_ratio": missing_values_ratio,
+            "feature_importance": feature_importance,
             "training_time": round(
                 execution_time_seconds,
                 3,
             ),
+            "hyperparameters": {
+                "algorithm": "RandomForestClassifier",
+                "target_column": target_column,
+                "feature_columns": features.columns.tolist(),
+                "n_estimators": self.n_estimators,
+                "max_depth": self.max_depth,
+                "min_samples_split": self.min_samples_split,
+                "min_samples_leaf": self.min_samples_leaf,
+                "max_features": self.max_features,
+                "criterion": self.criterion,
+                "bootstrap": self.bootstrap,
+                "class_weight": self.class_weight,
+                "random_state": self.random_state,
+                "test_size": self.test_size,
+                "train_rows": len(x_train),
+                "test_rows": len(x_test),
+                "stratification_used": stratification_used,
+            },
             "metrics": metrics,
             "expected_labels": [
                 str(value)
@@ -761,7 +864,7 @@ class MachineLearningTrainer:
         save_model_reset(
             model_type="machine_learning",
             model_name="Random Forest",
-            model_version="v1.0.0",
+            model_version=self.MODEL_VERSION,
             reason=(
                 "Réinitialisation du modèle "
                 "Machine Learning depuis PRUDENCIA"
@@ -775,6 +878,6 @@ class MachineLearningTrainer:
                 "a été réinitialisé."
             ),
             "model_name": "Random Forest",
-            "model_version": "v1.0.0",
+            "model_version": self.MODEL_VERSION,
             "model_deleted": model_deleted,
         }
