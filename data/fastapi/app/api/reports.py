@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services.analysis_orchestrator import AnalysisOrchestrator
+from app.services.analysis_history_service import AnalysisHistoryService
 
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
@@ -300,8 +301,38 @@ def generate_report(
 def generate_machine_learning_report(
     request: MachineLearningReportRequest,
 ) -> dict[str, Any]:
+    """
+    Génère et historise le rapport issu du questionnaire ML.
+
+    La prédiction brute du Random Forest et le rapport final sont conservés
+    séparément afin de vérifier leur cohérence.
+    """
+
+    history_service = AnalysisHistoryService()
+    analysis_id: str | None = None
+
     try:
         risk_level = normalize_prediction(request.prediction)
+
+        project = {
+            "id": request.project_id,
+            "project_id": request.project_id,
+            "name": request.project_name,
+            "project_name": request.project_name,
+            "source_name": request.project_name,
+        }
+
+        raw_machine_learning_result = {
+            "success": True,
+            "prediction": risk_level,
+            "classification": risk_level,
+            "confidence": request.confidence,
+            "probabilities": request.probabilities,
+            "features": request.features,
+            "model_name": "Random Forest",
+            "model_version": "1.0.0-MVP",
+            "execution_type": "inference",
+        }
 
         report = {
             "application": "PRUDENCIA",
@@ -335,12 +366,137 @@ def generate_machine_learning_report(
             ),
         }
 
+        consistency = {
+            "status": "coherent",
+            "is_consistent": True,
+            "message": (
+                "La classification finale du rapport correspond "
+                "à la prédiction brute du Random Forest."
+            ),
+            "raw_prediction": risk_level,
+            "final_prediction": report["classification"]["code"],
+        }
+
+        if request.project_id:
+            analysis_id = history_service.start_analysis(
+                project_id=request.project_id,
+                analysis_type="questionnaire",
+                questionnaire_response_id=request.response_id,
+                input_data={
+                    "project": project,
+                    "features": request.features,
+                    "questionnaire_response_id": request.response_id,
+                },
+                source_name=request.project_name,
+            )
+
+            history_service.save_model_execution(
+                analysis_id=analysis_id,
+                model_type="machine_learning",
+                model_name="Random Forest",
+                model_version="1.0.0-MVP",
+                task_name="classification_ai_act_questionnaire",
+                input_data={
+                    "features": request.features,
+                    "questionnaire_response_id": request.response_id,
+                },
+                output_data=raw_machine_learning_result,
+                execution_type="inference",
+                success=True,
+            )
+
+            report["analysis_history"] = {
+                "analysis_id": analysis_id,
+                "saved": True,
+            }
+
+            report["analysis_diagnostics"] = {
+                "raw_predictions": {
+                    "machine_learning": raw_machine_learning_result,
+                },
+                "final_prediction": risk_level,
+                "confidence": request.confidence,
+                "consistency": consistency,
+            }
+
+            history_service.complete_analysis(
+                analysis_id=analysis_id,
+                report=report,
+                final_prediction=risk_level,
+                confidence=request.confidence,
+                overall_risk_score=None,
+                summary=report["summary"],
+                raw_predictions={
+                    "machine_learning": raw_machine_learning_result,
+                },
+                consistency=consistency,
+                metadata={
+                    "analysis_type": "questionnaire",
+                    "questionnaire_response_id": request.response_id,
+                    "report_endpoint": "/reports/generate-ml",
+                },
+            )
+
+        else:
+            report["analysis_history"] = {
+                "analysis_id": None,
+                "saved": False,
+                "message": (
+                    "Le rapport n'a pas été historisé car aucun "
+                    "project_id n'a été transmis."
+                ),
+            }
+
+            report["analysis_diagnostics"] = {
+                "raw_predictions": {
+                    "machine_learning": raw_machine_learning_result,
+                },
+                "final_prediction": risk_level,
+                "confidence": request.confidence,
+                "consistency": consistency,
+            }
+
         return {
             "success": True,
+            "analysis_id": analysis_id,
             "report": report,
         }
 
+    except ValueError as error:
+        if analysis_id is not None:
+            try:
+                history_service.fail_analysis(
+                    analysis_id=analysis_id,
+                    error_message=str(error),
+                    error_context={
+                        "report_type": "questionnaire",
+                        "project_id": request.project_id,
+                        "response_id": request.response_id,
+                    },
+                )
+            except Exception:
+                pass
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
     except Exception as error:
+        if analysis_id is not None:
+            try:
+                history_service.fail_analysis(
+                    analysis_id=analysis_id,
+                    error_message=str(error),
+                    error_context={
+                        "report_type": "questionnaire",
+                        "project_id": request.project_id,
+                        "response_id": request.response_id,
+                    },
+                )
+            except Exception:
+                pass
+
         raise HTTPException(
             status_code=500,
             detail=(

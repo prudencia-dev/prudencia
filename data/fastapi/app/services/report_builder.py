@@ -19,6 +19,10 @@ class PrudenciaReportBuilder:
     Le builder reçoit les résultats déjà produits par les moteurs
     Machine Learning, Deep Learning et RAG, puis les transforme en
     un rapport JSON homogène.
+
+    Il ne modifie pas la décision du modèle : il normalise uniquement
+    les libellés afin que la prédiction brute et le rapport final
+    restent cohérents.
     """
 
     def build(
@@ -29,9 +33,7 @@ class PrudenciaReportBuilder:
         deep_learning_result: dict[str, Any] | None = None,
         rag_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """
-        Construit et retourne le rapport PRUDENCIA complet.
-        """
+        """Construit et retourne le rapport PRUDENCIA complet."""
 
         ml_result = machine_learning_result or {}
         dl_result = deep_learning_result or {}
@@ -64,10 +66,10 @@ class PrudenciaReportBuilder:
             rag_result=rag_data,
         )
 
-        report.conformity_status = self._build_conformity_status(
-            ml_result=ml_result,
-            dl_result=dl_result,
-        )
+        # Conservé uniquement pour compatibilité avec le domaine existant.
+        # L'interface Streamlit ne l'affiche plus, car PRUDENCIA produit
+        # un pré-diagnostic et non une décision de conformité.
+        report.conformity_status = "Non évalué"
 
         report.conclusion = self._build_conclusion(
             report=report,
@@ -83,10 +85,6 @@ class PrudenciaReportBuilder:
         self,
         project: dict[str, Any],
     ) -> Project:
-        """
-        Construit les informations du projet analysé.
-        """
-
         title = (
             project.get("title")
             or project.get("name")
@@ -116,44 +114,25 @@ class PrudenciaReportBuilder:
         dl_result: dict[str, Any],
     ) -> AIActClassification:
         """
-        Détermine la classification principale à partir des résultats
-        disponibles.
+        Détermine la classification principale.
 
-        Le résultat ML est prioritaire lorsqu'il contient une classe
-        explicitement prédite.
+        La valeur utilisée est exactement celle du moteur disponible,
+        simplement normalisée dans un format commun.
         """
 
-        classification = self._first_value(
-            ml_result,
-            [
-                "prediction",
-                "predicted_class",
-                "classification",
-                "risk_level",
-                "label",
-            ],
-        )
+        classification = self._extract_prediction(ml_result)
 
         if classification is None:
-            classification = self._first_value(
-                dl_result,
-                [
-                    "prediction",
-                    "predicted_class",
-                    "classification",
-                    "risk_level",
-                    "label",
-                ],
-            )
+            classification = self._extract_prediction(dl_result)
 
-        confidence = self._extract_confidence(
-            ml_result
+        normalized_classification = self._normalize_classification(
+            classification
         )
 
+        confidence = self._extract_confidence(ml_result)
+
         if confidence is None:
-            confidence = self._extract_confidence(
-                dl_result
-            )
+            confidence = self._extract_confidence(dl_result)
 
         justification = self._first_value(
             dl_result,
@@ -173,17 +152,107 @@ class PrudenciaReportBuilder:
                     "justification",
                     "explanation",
                     "summary",
+                    "analyse",
+                    "analysis",
                 ],
             )
 
+        if justification is None:
+            justification = self._default_justification(
+                normalized_classification
+            )
+
         return AIActClassification(
-            classification=str(
-                classification or "À déterminer"
-            ),
+            classification=normalized_classification,
             confidence=confidence,
-            justification=str(
-                justification or ""
+            justification=str(justification or ""),
+        )
+
+    def _extract_prediction(
+        self,
+        result: dict[str, Any],
+    ) -> Any | None:
+        return self._first_value(
+            result,
+            [
+                "prediction",
+                "predicted_class",
+                "classification",
+                "risk_level",
+                "label",
+                "final_prediction",
+            ],
+        )
+
+    def _normalize_classification(
+        self,
+        value: Any,
+    ) -> str:
+        if value in (None, ""):
+            return "À déterminer"
+
+        normalized = (
+            str(value)
+            .strip()
+            .lower()
+            .replace(" ", "_")
+            .replace("-", "_")
+            .replace("é", "e")
+            .replace("è", "e")
+            .replace("ê", "e")
+            .replace("à", "a")
+        )
+
+        aliases = {
+            "interdit": "interdit",
+            "prohibited": "interdit",
+            "pratique_interdite": "interdit",
+            "haut_risque": "haut_risque",
+            "high_risk": "haut_risque",
+            "risque_eleve": "haut_risque",
+            "limite": "risque_limite",
+            "risque_limite": "risque_limite",
+            "limited_risk": "risque_limite",
+            "minimal": "risque_minimal",
+            "risque_minimal": "risque_minimal",
+            "minimal_risk": "risque_minimal",
+            "hors_champ": "hors_perimetre",
+            "hors_perimetre": "hors_perimetre",
+            "out_of_scope": "hors_perimetre",
+        }
+
+        return aliases.get(normalized, normalized)
+
+    def _default_justification(
+        self,
+        classification: str,
+    ) -> str:
+        messages = {
+            "interdit": (
+                "Le moteur a détecté des caractéristiques pouvant "
+                "correspondre à une pratique interdite par l’AI Act."
             ),
+            "haut_risque": (
+                "Le moteur a détecté des caractéristiques pouvant "
+                "correspondre à un système à haut risque."
+            ),
+            "risque_limite": (
+                "Le moteur a détecté des obligations potentielles "
+                "de transparence."
+            ),
+            "risque_minimal": (
+                "Le moteur a identifié un niveau de risque faible "
+                "au regard des informations analysées."
+            ),
+            "hors_perimetre": (
+                "Le moteur n’a pas identifié de rattachement clair "
+                "à une catégorie réglementée."
+            ),
+        }
+
+        return messages.get(
+            classification,
+            "La classification doit être confirmée par un expert.",
         )
 
     # ------------------------------------------------------------------
@@ -196,20 +265,10 @@ class PrudenciaReportBuilder:
         ml_result: dict[str, Any],
         dl_result: dict[str, Any],
     ) -> list[Risk]:
-        """
-        Fusionne les risques provenant des moteurs ML et DL.
-        """
-
         risks: list[Risk] = []
 
-        for source_result in (
-            ml_result,
-            dl_result,
-        ):
-            raw_risks = source_result.get(
-                "risks",
-                [],
-            )
+        for source_result in (ml_result, dl_result):
+            raw_risks = source_result.get("risks", [])
 
             if isinstance(raw_risks, str):
                 raw_risks = [raw_risks]
@@ -218,25 +277,17 @@ class PrudenciaReportBuilder:
                 continue
 
             for raw_risk in raw_risks:
-                risk = self._convert_risk(
-                    raw_risk
-                )
+                risk = self._convert_risk(raw_risk)
 
                 if risk is not None:
                     risks.append(risk)
 
-        return self._deduplicate_risks(
-            risks
-        )
+        return self._deduplicate_risks(risks)
 
     def _convert_risk(
         self,
         raw_risk: Any,
     ) -> Risk | None:
-        """
-        Convertit un résultat brut en objet Risk.
-        """
-
         if isinstance(raw_risk, str):
             return Risk(
                 category="Général",
@@ -259,18 +310,12 @@ class PrudenciaReportBuilder:
 
         return Risk(
             category=str(
-                raw_risk.get(
-                    "category",
-                    "Général",
-                )
+                raw_risk.get("category", "Général")
             ),
             level=str(
                 raw_risk.get(
                     "level",
-                    raw_risk.get(
-                        "severity",
-                        "À évaluer",
-                    ),
+                    raw_risk.get("severity", "À évaluer"),
                 )
             ),
             description=str(description),
@@ -280,10 +325,6 @@ class PrudenciaReportBuilder:
         self,
         risks: list[Risk],
     ) -> list[Risk]:
-        """
-        Supprime les risques strictement identiques.
-        """
-
         unique_risks: list[Risk] = []
         seen: set[tuple[str, str, str]] = set()
 
@@ -312,50 +353,31 @@ class PrudenciaReportBuilder:
         ml_result: dict[str, Any],
         dl_result: dict[str, Any],
     ) -> list[Recommendation]:
-        """
-        Fusionne les recommandations issues des moteurs ML et DL.
-        """
-
         recommendations: list[Recommendation] = []
 
-        for source_result in (
-            ml_result,
-            dl_result,
-        ):
+        for source_result in (ml_result, dl_result):
             raw_recommendations = source_result.get(
                 "recommendations",
                 [],
             )
 
-            if isinstance(
-                raw_recommendations,
-                str,
-            ):
-                raw_recommendations = [
-                    raw_recommendations
-                ]
+            if isinstance(raw_recommendations, str):
+                raw_recommendations = [raw_recommendations]
 
-            if not isinstance(
-                raw_recommendations,
-                list,
-            ):
+            if not isinstance(raw_recommendations, list):
                 continue
 
             for index, raw_recommendation in enumerate(
                 raw_recommendations,
                 start=1,
             ):
-                recommendation = (
-                    self._convert_recommendation(
-                        raw_recommendation,
-                        default_priority=index,
-                    )
+                recommendation = self._convert_recommendation(
+                    raw_recommendation,
+                    default_priority=index,
                 )
 
                 if recommendation is not None:
-                    recommendations.append(
-                        recommendation
-                    )
+                    recommendations.append(recommendation)
 
         return self._deduplicate_recommendations(
             recommendations
@@ -367,37 +389,21 @@ class PrudenciaReportBuilder:
         *,
         default_priority: int,
     ) -> Recommendation | None:
-        """
-        Convertit une recommandation brute.
-        """
-
-        if isinstance(
-            raw_recommendation,
-            str,
-        ):
+        if isinstance(raw_recommendation, str):
             return Recommendation(
                 priority=default_priority,
                 category="Général",
                 action=raw_recommendation,
             )
 
-        if not isinstance(
-            raw_recommendation,
-            dict,
-        ):
+        if not isinstance(raw_recommendation, dict):
             return None
 
         action = (
             raw_recommendation.get("action")
-            or raw_recommendation.get(
-                "recommendation"
-            )
-            or raw_recommendation.get(
-                "description"
-            )
-            or raw_recommendation.get(
-                "message"
-            )
+            or raw_recommendation.get("recommendation")
+            or raw_recommendation.get("description")
+            or raw_recommendation.get("message")
         )
 
         if not action:
@@ -428,14 +434,7 @@ class PrudenciaReportBuilder:
         self,
         recommendations: list[Recommendation],
     ) -> list[Recommendation]:
-        """
-        Supprime les doublons et trie par priorité.
-        """
-
-        unique_recommendations: list[
-            Recommendation
-        ] = []
-
+        unique_recommendations: list[Recommendation] = []
         seen: set[tuple[str, str]] = set()
 
         for recommendation in recommendations:
@@ -448,10 +447,7 @@ class PrudenciaReportBuilder:
                 continue
 
             seen.add(key)
-
-            unique_recommendations.append(
-                recommendation
-            )
+            unique_recommendations.append(recommendation)
 
         return sorted(
             unique_recommendations,
@@ -467,11 +463,6 @@ class PrudenciaReportBuilder:
         *,
         rag_result: dict[str, Any],
     ) -> list[LegalReference]:
-        """
-        Transforme les résultats de recherche RAG en références
-        juridiques exploitables dans le rapport.
-        """
-
         raw_references = (
             rag_result.get("references")
             or rag_result.get("results")
@@ -480,10 +471,7 @@ class PrudenciaReportBuilder:
             or []
         )
 
-        if not isinstance(
-            raw_references,
-            list,
-        ):
+        if not isinstance(raw_references, list):
             return []
 
         references: list[LegalReference] = []
@@ -502,10 +490,6 @@ class PrudenciaReportBuilder:
         self,
         raw_reference: Any,
     ) -> LegalReference | None:
-        """
-        Convertit une réponse brute de ChromaDB.
-        """
-
         if isinstance(raw_reference, str):
             return LegalReference(
                 source="RAG",
@@ -515,10 +499,7 @@ class PrudenciaReportBuilder:
         if not isinstance(raw_reference, dict):
             return None
 
-        metadata = raw_reference.get(
-            "metadata",
-            {},
-        )
+        metadata = raw_reference.get("metadata", {})
 
         if not isinstance(metadata, dict):
             metadata = {}
@@ -541,103 +522,64 @@ class PrudenciaReportBuilder:
             source=str(
                 raw_reference.get(
                     "source",
-                    metadata.get(
-                        "source",
-                        "RAG",
-                    ),
+                    metadata.get("source", "RAG"),
                 )
             ),
             excerpt=str(excerpt),
             document=self._optional_string(
                 raw_reference.get(
                     "filename",
-                    metadata.get(
-                        "filename",
-                    ),
+                    metadata.get("filename"),
                 )
             ),
             article=self._optional_string(
                 raw_reference.get(
                     "article",
-                    metadata.get(
-                        "article",
-                    ),
+                    metadata.get("article"),
                 )
             ),
             relevance_score=relevance_score,
         )
 
     # ------------------------------------------------------------------
-    # Conformité et conclusion
+    # Conclusion
     # ------------------------------------------------------------------
-
-    def _build_conformity_status(
-        self,
-        *,
-        ml_result: dict[str, Any],
-        dl_result: dict[str, Any],
-    ) -> str:
-        """
-        Détermine le statut global de conformité lorsqu'il est fourni
-        par un moteur.
-        """
-
-        status = self._first_value(
-            ml_result,
-            [
-                "conformity_status",
-                "compliance_status",
-                "status",
-            ],
-        )
-
-        if status is None:
-            status = self._first_value(
-                dl_result,
-                [
-                    "conformity_status",
-                    "compliance_status",
-                    "status",
-                ],
-            )
-
-        return str(
-            status or "À déterminer"
-        )
 
     def _build_conclusion(
         self,
         *,
         report: PrudenciaReport,
     ) -> str:
-        """
-        Génère une conclusion simple destinée au rapport client.
-        """
-
-        classification = (
-            report.ai_act.classification
-        )
-
+        classification = report.ai_act.classification
         risk_count = len(report.risks)
-
-        recommendation_count = len(
-            report.recommendations
-        )
+        recommendation_count = len(report.recommendations)
 
         if classification == "À déterminer":
             return (
                 "Les informations disponibles ne permettent pas "
-                "encore de déterminer la classification complète "
-                "du projet. Une analyse complémentaire est requise."
+                "de déterminer la classification du projet. "
+                "Une analyse complémentaire est nécessaire."
             )
 
+        labels = {
+            "interdit": "pratique potentiellement interdite",
+            "haut_risque": "système potentiellement à haut risque",
+            "risque_limite": "système à risque limité",
+            "risque_minimal": "système à risque minimal",
+            "hors_perimetre": "projet potentiellement hors périmètre",
+        }
+
+        readable_classification = labels.get(
+            classification,
+            classification,
+        )
+
         return (
-            f"Le projet est classé « {classification} ». "
+            f"Le projet est classé comme « {readable_classification} ». "
             f"{risk_count} risque(s) et "
-            f"{recommendation_count} recommandation(s) "
-            "ont été identifiés. Ce pré-diagnostic doit être "
-            "validé par un professionnel compétent avant toute "
-            "décision réglementaire définitive."
+            f"{recommendation_count} recommandation(s) ont été "
+            "identifiés. Ce résultat constitue un pré-diagnostic "
+            "et doit être confirmé par un professionnel compétent."
         )
 
     # ------------------------------------------------------------------
@@ -649,19 +591,10 @@ class PrudenciaReportBuilder:
         data: dict[str, Any],
         keys: list[str],
     ) -> Any | None:
-        """
-        Retourne la première valeur non vide trouvée.
-        """
-
         for key in keys:
             value = data.get(key)
 
-            if value not in (
-                None,
-                "",
-                [],
-                {},
-            ):
+            if value not in (None, "", [], {}):
                 return value
 
         return None
@@ -670,10 +603,6 @@ class PrudenciaReportBuilder:
         self,
         result: dict[str, Any],
     ) -> float | None:
-        """
-        Extrait et normalise un score de confiance.
-        """
-
         raw_confidence = self._first_value(
             result,
             [
@@ -688,14 +617,12 @@ class PrudenciaReportBuilder:
             return None
 
         try:
-            confidence = float(
-                raw_confidence
-            )
+            confidence = float(raw_confidence)
         except (TypeError, ValueError):
             return None
 
         if confidence > 1:
-            confidence = confidence / 100
+            confidence /= 100
 
         return round(
             max(0.0, min(1.0, confidence)),
@@ -706,10 +633,6 @@ class PrudenciaReportBuilder:
         self,
         result: dict[str, Any],
     ) -> float | None:
-        """
-        Extrait un score de pertinence RAG lorsqu'il est disponible.
-        """
-
         raw_score = self._first_value(
             result,
             [
@@ -724,10 +647,7 @@ class PrudenciaReportBuilder:
             return None
 
         try:
-            return round(
-                float(raw_score),
-                4,
-            )
+            return round(float(raw_score), 4)
         except (TypeError, ValueError):
             return None
 
@@ -735,14 +655,7 @@ class PrudenciaReportBuilder:
         self,
         value: Any,
     ) -> str | None:
-        """
-        Convertit une valeur optionnelle en chaîne.
-        """
-
-        if value in (
-            None,
-            "",
-        ):
+        if value in (None, ""):
             return None
 
         return str(value)
