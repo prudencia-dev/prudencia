@@ -5,6 +5,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.ai.fine_tuning.trainer import FineTuningTrainer
+from app.api.error_responses import raise_api_error
+from app.config import AVAILABLE_MODELS
+from app.services.training_history_service import (
+    get_training_history,
+    save_training_execution,
+)
 from fastapi import (
     APIRouter,
     File,
@@ -13,14 +20,6 @@ from fastapi import (
     UploadFile,
 )
 from pydantic import BaseModel
-
-from app.ai.fine_tuning.trainer import FineTuningTrainer
-from app.config import AVAILABLE_MODELS
-from app.services.training_history_service import (
-    get_training_history,
-    save_training_execution,
-)
-
 
 router = APIRouter(
     prefix="/fine-tuning",
@@ -415,7 +414,7 @@ async def train_model(
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=404,
-            detail=str(exc),
+            detail="Le fichier nécessaire au Fine-Tuning est introuvable.",
         ) from exc
 
     except ValueError as exc:
@@ -425,19 +424,18 @@ async def train_model(
         ) from exc
 
     except RuntimeError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise_api_error(
+            operation="fine_tuning.train.runtime",
+            error=exc,
+            detail="Le Fine-Tuning n'a pas pu être exécuté.",
+        )
 
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Une erreur inattendue est survenue pendant "
-                f"le Fine-Tuning : {exc}"
-            ),
-        ) from exc
+        raise_api_error(
+            operation="fine_tuning.train",
+            error=exc,
+            detail="Une erreur inattendue est survenue pendant le Fine-Tuning.",
+        )
 
     finally:
         await file.close()
@@ -471,17 +469,15 @@ def reset_fine_tuned_model(
     except FileNotFoundError as error:
         raise HTTPException(
             status_code=404,
-            detail=str(error),
+            detail="Aucun modèle Fine-Tuning à réinitialiser n'a été trouvé.",
         ) from error
 
     except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Erreur pendant la réinitialisation "
-                f"du modèle Fine-Tuning : {error}"
-            ),
-        ) from error
+        raise_api_error(
+            operation="fine_tuning.reset",
+            error=error,
+            detail="Impossible de réinitialiser le modèle Fine-Tuning.",
+        )
 
 
 @router.post("/predict")
@@ -515,7 +511,7 @@ def predict_with_fine_tuned_model(
     except FileNotFoundError as error:
         raise HTTPException(
             status_code=404,
-            detail=str(error),
+            detail="Le modèle Fine-Tuning demandé est introuvable.",
         ) from error
 
     except ValueError as error:
@@ -525,16 +521,15 @@ def predict_with_fine_tuned_model(
         ) from error
 
     except RuntimeError as error:
-        raise HTTPException(
-            status_code=500,
-            detail=str(error),
-        ) from error
+        raise_api_error(
+            operation="fine_tuning.predict.runtime",
+            error=error,
+            detail="Le modèle Fine-Tuning ne peut pas effectuer la prédiction.",
+        )
 
     except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Erreur pendant la prédiction "
-                f"Fine-Tuning : {error}"
-            ),
-        ) from error
+        raise_api_error(
+            operation="fine_tuning.predict",
+            error=error,
+            detail="Impossible d'effectuer la prédiction Fine-Tuning.",
+        )
