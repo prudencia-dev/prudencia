@@ -10,6 +10,14 @@ La spécification exacte des paramètres et réponses est disponible dans OpenAP
 
 L'API accepte un identifiant UUID dans l'en-tête `X-Request-ID`. Si l'en-tête est absent ou invalide, un nouvel UUID est généré. La valeur effective est renvoyée dans chaque réponse et ajoutée aux logs techniques afin de relier un incident côté client au diagnostic serveur.
 
+## Journalisation
+
+Les événements applicatifs sont écrits sur la sortie standard. Par défaut, chaque ligne est un objet JSON contenant l'horodatage UTC, le niveau, le logger, le message et l'identifiant de requête. Les requêtes HTTP ajoutent la méthode, le chemin, le statut et la durée en millisecondes.
+
+- `LOG_FORMAT=json` convient à Docker et aux plateformes de centralisation ;
+- `LOG_FORMAT=text` fournit une lecture compacte pendant le développement ;
+- `LOG_LEVEL` règle le seuil, avec `INFO` par défaut.
+
 ## Routes principales
 
 | Méthode | Chemin | Fonction |

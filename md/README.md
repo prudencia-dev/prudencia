@@ -52,6 +52,7 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 2. [02 — Gestion des erreurs API](02_RAPPORT_EVOLUTION_GESTION_ERREURS_API.md)
 3. [03 — Centralisation des fichiers Markdown](03_RAPPORT_EVOLUTION_CENTRALISATION_MARKDOWN.md)
 4. [04 — Traçabilité des requêtes API](04_RAPPORT_EVOLUTION_TRACABILITE_REQUETES.md)
+5. [05 — Journalisation structurée](05_RAPPORT_EVOLUTION_JOURNALISATION_STRUCTUREE.md)
 
 ## Organisation du dépôt
 

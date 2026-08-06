@@ -31,6 +31,7 @@ from app.api.training_history import (
     router as training_history_router,
 )
 from app.database import init_database, save_analysis
+from app.logging_config import configure_logging
 from app.request_context import RequestContextMiddleware
 from app.services.chunking_service import (
     create_chunks,
@@ -44,6 +45,8 @@ from app.services.document_service import (
 from app.services.pdf_service import extract_pdf_text
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+
+configure_logging()
 
 app = FastAPI(
     title="PRUDENCIA API",
