@@ -5,7 +5,13 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 import pandas as pd
-
+from app.ai.machine_learning.trainer import MachineLearningTrainer
+from app.services.upload_security import (
+    MAX_CSV_UPLOAD_BYTES,
+    UploadTooLargeError,
+    read_limited_file,
+    sanitized_filename,
+)
 from fastapi import (
     APIRouter,
     File,
@@ -14,8 +20,6 @@ from fastapi import (
     UploadFile,
 )
 from pydantic import BaseModel
-
-from app.ai.machine_learning.trainer import MachineLearningTrainer
 
 
 class PredictionRequest(BaseModel):
@@ -116,17 +120,13 @@ def train_machine_learning(
 ) -> dict[str, Any]:
     """Entraîne un Random Forest à partir d'un fichier CSV."""
 
-    if not file.filename:
+    try:
+        sanitized_filename(file.filename, ".csv")
+    except ValueError as error:
         raise HTTPException(
             status_code=400,
-            detail="Le fichier ne possède pas de nom.",
-        )
-
-    if not file.filename.lower().endswith(".csv"):
-        raise HTTPException(
-            status_code=400,
-            detail="Seuls les fichiers CSV sont acceptés.",
-        )
+            detail=str(error),
+        ) from error
 
     selected_features = [
         column.strip()
@@ -194,7 +194,10 @@ def train_machine_learning(
     temporary_path: Path | None = None
 
     try:
-        file_content = file.file.read()
+        file_content = read_limited_file(
+            file.file,
+            max_bytes=MAX_CSV_UPLOAD_BYTES,
+        )
 
         with NamedTemporaryFile(
             mode="wb",
@@ -222,6 +225,12 @@ def train_machine_learning(
             feature_columns=selected_features,
             target_column=target_column,
         )
+
+    except UploadTooLargeError as error:
+        raise HTTPException(
+            status_code=413,
+            detail=str(error),
+        ) from error
 
     except KeyError as error:
         raise HTTPException(

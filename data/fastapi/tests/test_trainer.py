@@ -1,33 +1,15 @@
-from pprint import pprint
+from pathlib import Path
 
-from app.ai.fine_tuning.trainer import FineTuningTrainer
+from app.ai.fine_tuning.dataset import DatasetManager
 
 
-print("=== PRUDENCIA - TEST PIPELINE FINE-TUNING ===")
+def test_training_demo_dataset_is_trainable() -> None:
+    dataset_path = Path(__file__).parents[1] / "datasets" / "training_demo.csv"
+    manager = DatasetManager()
 
-trainer = FineTuningTrainer()
+    dataframe = manager.load_csv(dataset_path)
+    report = manager.validate(text_column="texte", label_column="label")
 
-print("Préparation du dataset...")
-
-preparation = trainer.prepare_training(
-    csv_path="/app/datasets/training_demo.csv",
-    text_column="texte",
-    label_column="label",
-)
-
-print("Dataset prêt :")
-pprint(preparation.to_dict())
-
-print("\nLancement du Fine-Tuning...")
-
-result = trainer.train(
-    model_name="camembert",
-    epochs=1,
-    batch_size=2,
-    learning_rate=2e-5,
-)
-
-print("\nRésultat :")
-pprint(result)
-
-print("\n✅ PIPELINE COMPLET OK")
+    assert len(dataframe) >= manager.MINIMUM_EXAMPLES
+    assert report.is_trainable
+    assert report.info.number_of_classes == 2

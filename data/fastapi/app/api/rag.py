@@ -2,6 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.ai.rag import (
+    DEFAULT_COLLECTION,
+    get_rag_stats,
+)
+from app.services.document_service import list_documents
+from app.services.rag_service import (
+    delete_document,
+    index_pdf_document,
+    reset_rag_database,
+)
+from app.services.upload_security import UploadTooLargeError
 from fastapi import (
     APIRouter,
     File,
@@ -9,18 +20,6 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-
-from app.ai.rag import (
-    DEFAULT_COLLECTION,
-    get_rag_stats,
-)
-from app.services.document_service import list_documents
-from app.services.rag_service import (
-    index_pdf_document,
-    reset_rag_database,
-    delete_document,
-)
-
 
 router = APIRouter(
     prefix="/rag",
@@ -88,6 +87,12 @@ def rag_index_document(
             chunk_overlap=chunk_overlap,
             collection_name=collection_name,
         )
+
+    except UploadTooLargeError as error:
+        raise HTTPException(
+            status_code=413,
+            detail=str(error),
+        ) from error
 
     except ValueError as error:
         raise HTTPException(
