@@ -6,6 +6,10 @@
 
 La spécification exacte des paramètres et réponses est disponible dans OpenAPI sur `/docs`. Le tableau suivant sert de carte fonctionnelle.
 
+## Traçabilité des requêtes
+
+L'API accepte un identifiant UUID dans l'en-tête `X-Request-ID`. Si l'en-tête est absent ou invalide, un nouvel UUID est généré. La valeur effective est renvoyée dans chaque réponse et ajoutée aux logs techniques afin de relier un incident côté client au diagnostic serveur.
+
 ## Routes principales
 
 | Méthode | Chemin | Fonction |

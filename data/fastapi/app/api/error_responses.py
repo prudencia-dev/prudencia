@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import NoReturn
 
+from app.request_context import get_request_id
 from fastapi import HTTPException, status
 
 LOGGER = logging.getLogger("prudencia.api")
@@ -23,7 +24,10 @@ def raise_api_error(
 
     LOGGER.exception(
         "Échec d'une opération API",
-        extra={"operation": operation},
+        extra={
+            "operation": operation,
+            "request_id": get_request_id(),
+        },
     )
     raise HTTPException(
         status_code=status_code,

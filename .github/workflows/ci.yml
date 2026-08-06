@@ -42,7 +42,9 @@ jobs:
       - name: Run unit tests
         env:
           PYTHONPATH: data/fastapi
-        run: pytest -q data/fastapi/tests
+        run: >-
+          pytest -q data/fastapi/tests
+          -o cache_dir=/tmp/prudencia-pytest-cache
 
   compose-validation:
     name: Docker Compose validation

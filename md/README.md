@@ -48,6 +48,7 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 - [Rapport CI et qualité](RAPPORT_EVOLUTION_CI_QUALITE.md)
 - [Rapport sur la gestion des erreurs](RAPPORT_EVOLUTION_GESTION_ERREURS_API.md)
 - [Rapport sur la centralisation Markdown](RAPPORT_EVOLUTION_CENTRALISATION_MARKDOWN.md)
+- [Rapport sur la traçabilité des requêtes](RAPPORT_EVOLUTION_TRACABILITE_REQUETES.md)
 
 ## Organisation du dépôt
 

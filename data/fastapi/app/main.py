@@ -31,6 +31,7 @@ from app.api.training_history import (
     router as training_history_router,
 )
 from app.database import init_database, save_analysis
+from app.request_context import RequestContextMiddleware
 from app.services.chunking_service import (
     create_chunks,
     split_text,
@@ -48,6 +49,7 @@ app = FastAPI(
     title="PRUDENCIA API",
     version="0.2.0",
 )
+app.add_middleware(RequestContextMiddleware)
 app.include_router(model_registry_router)
 app.include_router(fine_tuning_router)
 app.include_router(rag_router)
