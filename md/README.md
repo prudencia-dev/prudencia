@@ -45,10 +45,13 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 - [Référence des modules](reference-modules.md)
 - [Notebooks pédagogiques](NOTEBOOKS.md)
 - [Base de données locale](BASE_DONNEES_LOCALE.md)
-- [Rapport CI et qualité](RAPPORT_EVOLUTION_CI_QUALITE.md)
-- [Rapport sur la gestion des erreurs](RAPPORT_EVOLUTION_GESTION_ERREURS_API.md)
-- [Rapport sur la centralisation Markdown](RAPPORT_EVOLUTION_CENTRALISATION_MARKDOWN.md)
-- [Rapport sur la traçabilité des requêtes](RAPPORT_EVOLUTION_TRACABILITE_REQUETES.md)
+
+### Rapports d'évolution — ordre chronologique
+
+1. [01 — CI et qualité](01_RAPPORT_EVOLUTION_CI_QUALITE.md)
+2. [02 — Gestion des erreurs API](02_RAPPORT_EVOLUTION_GESTION_ERREURS_API.md)
+3. [03 — Centralisation des fichiers Markdown](03_RAPPORT_EVOLUTION_CENTRALISATION_MARKDOWN.md)
+4. [04 — Traçabilité des requêtes API](04_RAPPORT_EVOLUTION_TRACABILITE_REQUETES.md)
 
 ## Organisation du dépôt
 
