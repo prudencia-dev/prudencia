@@ -90,7 +90,10 @@ def _validate_training_parameters(
     if not 0 < learning_rate <= 0.01:
         raise HTTPException(
             status_code=400,
-            detail="Le learning rate doit être supérieur à 0 et inférieur ou égal à 0,01.",
+            detail=(
+                "Le learning rate doit être supérieur à 0 "
+                "et inférieur ou égal à 0,01."
+            ),
         )
 
     if seed < 0:

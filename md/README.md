@@ -53,6 +53,7 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 4. [04 — Traçabilité des requêtes API](04_RAPPORT_EVOLUTION_TRACABILITE_REQUETES.md)
 5. [05 — Journalisation structurée](05_RAPPORT_EVOLUTION_JOURNALISATION_STRUCTUREE.md)
 6. [06 — Simplification de l'image API](06_RAPPORT_EVOLUTION_SIMPLIFICATION_IMAGE_API.md)
+7. [07 — Qualité du backend](07_RAPPORT_EVOLUTION_QUALITE_BACKEND.md)
 
 ## Organisation du dépôt
 

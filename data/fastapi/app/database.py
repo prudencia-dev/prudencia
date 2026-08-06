@@ -1,6 +1,6 @@
 import os
-import psycopg
 
+import psycopg
 
 DB_NAME = os.getenv("POSTGRES_DB", "prudencia")
 DB_USER = os.getenv("POSTGRES_USER", "prudencia")
