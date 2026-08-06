@@ -31,7 +31,6 @@ Le volume `data/chromadb` rend les vecteurs persistants entre les redémarrages 
 | `/models/huggingface` | Cache des modèles téléchargés |
 | `data/fastapi/datasets` | Dataset de démonstration de l'API |
 | `notebooks/datasets` | Datasets pédagogiques versionnés |
-| `notebooks/ML/outputs` | Résultats de l'expérience Random Forest |
 
 ## Cycle de vie d'un document
 
@@ -50,4 +49,4 @@ L'empreinte SHA-256 permet d'identifier le contenu. Les noms transmis par le cli
 
 ## Données sensibles
 
-Les documents juridiques et réponses au questionnaire peuvent contenir des informations confidentielles. En production, prévoir chiffrement, contrôle d'accès, politique de rétention, journalisation des accès, sauvegardes et procédure d'effacement. Les datasets de démonstration ne doivent pas recevoir de données personnelles réelles.
+Les documents juridiques peuvent contenir des informations confidentielles. En production, prévoir chiffrement, contrôle d'accès, politique de rétention, journalisation des accès, sauvegardes et procédure d'effacement. Les datasets de démonstration ne doivent pas recevoir de données personnelles réelles.

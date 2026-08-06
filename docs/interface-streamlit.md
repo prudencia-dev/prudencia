@@ -14,19 +14,16 @@
 | `pages/01_rag.py` | Import, indexation et gestion des documents RAG |
 | `pages/02_modeles.py` | Accès aux vues des modèles et entraînements |
 | `pages/03_rapport_documentaire.py` | Analyse d'un PDF, classification DL, recherche RAG et rapport |
-| `pages/04_rapport_questionnaire.py` | Questionnaire, prédiction ML et rapport métier |
 
 ## Modules de la page Modèles
 
 - `model_base.py` présente JuriBERT Base et permet une prédiction de référence.
 - `model_fine_tuning.py` charge un CSV, configure le fine-tuning et affiche son rapport.
-- `model_machine_learning.py` configure le Random Forest, lance l'entraînement et visualise ses métriques.
-- `model_comparison.py` compare les dernières exécutions ML et DL.
-- `model_history.py` restitue configurations, métriques, matrices de confusion, importance des variables et avertissements.
+- `model_history.py` restitue les configurations et métriques des entraînements Deep Learning.
 
 ## Gestion de l'état
 
-Streamlit réexécute le script après chaque interaction. Les valeurs devant survivre à cette réexécution sont conservées dans `st.session_state`. Les opérations longues utilisent des messages d'attente et des délais HTTP spécifiques : jusqu'à 600 secondes pour le ML et 3 600 secondes pour le fine-tuning.
+Streamlit réexécute le script après chaque interaction. Les valeurs devant survivre à cette réexécution sont conservées dans `st.session_state`. Les opérations longues utilisent des messages d'attente et un délai HTTP pouvant atteindre 3 600 secondes pour le fine-tuning.
 
 ## Contrat avec l'API
 
