@@ -23,7 +23,7 @@ def init_database():
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS analyses (
+                CREATE TABLE IF NOT EXISTS prudencia.analyses (
                     id SERIAL PRIMARY KEY,
                     description TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -36,7 +36,8 @@ def save_analysis(description: str) -> int:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO analyses (description) VALUES (%s) RETURNING id;",
+                "INSERT INTO prudencia.analyses "
+                "(description) VALUES (%s) RETURNING id;",
                 (description,)
             )
             analysis_id = cur.fetchone()[0]

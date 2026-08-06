@@ -26,7 +26,7 @@ Conserver le dump hors du dépôt Git et vérifier son contenu avec `pg_restore 
 
 ## Tables attendues
 
-- `public.analyses` ;
+- `prudencia.analyses` ;
 - `prudencia.documents` ;
 - `prudencia.document_chunks` ;
 - `prudencia.model_executions` ;
