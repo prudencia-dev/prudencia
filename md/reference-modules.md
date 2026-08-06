@@ -64,18 +64,14 @@ Cette page rattache chaque module source à sa responsabilité principale. Les f
 | `modules/model_fine_tuning.py` | Formulaire et résultats du fine-tuning |
 | `modules/model_history.py` | Historique et métriques des entraînements Deep Learning |
 
-## Démonstrations et infrastructure
+## Infrastructure
 
 | Fichier | Responsabilité |
 |---|---|
-| `notebooks/DL/02_JuriBERT_FineTuning.ipynb` | Démonstration interactive du fine-tuning |
-| `notebooks/DL/02_juribert_finetuning.py` | Version script de la démonstration DL |
-| `notebooks/datasets/dl/dl_juribert_training_cases_v2.csv` | Corpus textuel annoté pédagogique |
 | `compose/dev/compose.yaml` | Services, réseaux implicites, ports et volumes locaux |
 | `data/fastapi/Dockerfile` | Image d'exécution de l'API |
 | `data/fastapi/requirements.txt` | Dépendances du backend et de l'IA |
 | `data/streamlit/requirements.txt` | Dépendances de l'interface |
-| `notebooks/requirements.txt` | Dépendances des notebooks |
 
 ## Points d'extension
 

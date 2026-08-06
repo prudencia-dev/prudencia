@@ -43,7 +43,6 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 - [Configuration et déploiement](deploiement.md)
 - [Développement et tests](developpement.md)
 - [Référence des modules](reference-modules.md)
-- [Notebooks pédagogiques](NOTEBOOKS.md)
 - [Base de données locale](BASE_DONNEES_LOCALE.md)
 
 ### Rapports d'évolution — ordre chronologique
@@ -53,6 +52,7 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 3. [03 — Centralisation des fichiers Markdown](03_RAPPORT_EVOLUTION_CENTRALISATION_MARKDOWN.md)
 4. [04 — Traçabilité des requêtes API](04_RAPPORT_EVOLUTION_TRACABILITE_REQUETES.md)
 5. [05 — Journalisation structurée](05_RAPPORT_EVOLUTION_JOURNALISATION_STRUCTUREE.md)
+6. [06 — Simplification de l'image API](06_RAPPORT_EVOLUTION_SIMPLIFICATION_IMAGE_API.md)
 
 ## Organisation du dépôt
 
@@ -61,7 +61,6 @@ compose/dev/           orchestration Docker locale
 config/init/           scripts SQL d'initialisation
 data/fastapi/          API, logique métier et pipelines IA
 data/streamlit/        interface utilisateur
-notebooks/             démonstrations ML et Deep Learning
 ```
 
 ## Statut

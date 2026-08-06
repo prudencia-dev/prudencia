@@ -11,6 +11,8 @@
 
 Le mode actuel est destiné au développement : montage du code source et rechargement automatique d'Uvicorn.
 
+L'image API installe la distribution CPU officielle de PyTorch. Elle conserve les fonctions d'inférence et d'entraînement local sans embarquer les bibliothèques CUDA/NVIDIA, inutilisées par Docker Desktop sur le poste local. La commande Compose ajoute `--reload` pour le développement ; l'image seule démarre sans rechargement automatique.
+
 ## Variables d'environnement
 
 Créer `compose/dev/.env` sans le versionner :

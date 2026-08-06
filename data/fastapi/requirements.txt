@@ -6,7 +6,8 @@ chromadb
 transformers
 sentence-transformers
 sentencepiece
-torch
+# Doit rester aligné avec l'installation CPU du Dockerfile.
+torch==2.9.0
 python-multipart
 PyMuPDF
 scikit-learn

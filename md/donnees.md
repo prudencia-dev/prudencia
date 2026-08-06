@@ -30,7 +30,8 @@ Le volume `data/chromadb` rend les vecteurs persistants entre les redémarrages 
 | `/models` | Artefacts ML/DL montés dans l'API |
 | `/models/huggingface` | Cache des modèles téléchargés |
 | `data/fastapi/datasets` | Dataset de démonstration de l'API |
-| `notebooks/datasets` | Datasets pédagogiques versionnés |
+
+Les datasets pédagogiques indépendants de l'application sont conservés dans le dépôt privé [`prudencia-dev/poc`](https://github.com/prudencia-dev/poc).
 
 ## Cycle de vie d'un document
 

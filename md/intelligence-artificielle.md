@@ -33,7 +33,7 @@ La pertinence dépend du découpage, de la qualité du document et de la requêt
 
 ## Artefacts et reproductibilité
 
-Les notebooks de `notebooks/` documentent les expériences pédagogiques indépendamment de l'application. Leurs datasets sont versionnés pour la démonstration. Pour une expérimentation reproductible, conserver au minimum :
+Les expériences pédagogiques et leurs datasets sont désormais séparés de l'application dans le dépôt privé [`prudencia-dev/poc`](https://github.com/prudencia-dev/poc). Pour une expérimentation reproductible, conserver au minimum :
 
 - version et empreinte du dataset ;
 - variables ou colonnes utilisées ;
