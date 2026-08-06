@@ -4,7 +4,6 @@ import torch
 import torch.nn.functional as functional
 from transformers import AutoModel, AutoTokenizer
 
-
 MODEL_NAME = "almanach/camembert-base"
 
 _tokenizer = None

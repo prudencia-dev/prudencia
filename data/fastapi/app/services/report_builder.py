@@ -17,7 +17,7 @@ class PrudenciaReportBuilder:
     Construit le rapport métier final de PRUDENCIA.
 
     Le builder reçoit les résultats déjà produits par les moteurs
-    Machine Learning, Deep Learning et RAG, puis les transforme en
+    Deep Learning et RAG, puis les transforme en
     un rapport JSON homogène.
     """
 
@@ -25,7 +25,6 @@ class PrudenciaReportBuilder:
         self,
         *,
         project: dict[str, Any],
-        machine_learning_result: dict[str, Any] | None = None,
         deep_learning_result: dict[str, Any] | None = None,
         rag_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -33,7 +32,6 @@ class PrudenciaReportBuilder:
         Construit et retourne le rapport PRUDENCIA complet.
         """
 
-        ml_result = machine_learning_result or {}
         dl_result = deep_learning_result or {}
         rag_data = rag_result or {}
 
@@ -41,22 +39,18 @@ class PrudenciaReportBuilder:
             project=self._build_project(project),
         )
 
-        report.machine_learning_result = ml_result
         report.deep_learning_result = dl_result
         report.rag_result = rag_data
 
         report.ai_act = self._build_ai_act(
-            ml_result=ml_result,
             dl_result=dl_result,
         )
 
         report.risks = self._build_risks(
-            ml_result=ml_result,
             dl_result=dl_result,
         )
 
         report.recommendations = self._build_recommendations(
-            ml_result=ml_result,
             dl_result=dl_result,
         )
 
@@ -65,7 +59,6 @@ class PrudenciaReportBuilder:
         )
 
         report.conformity_status = self._build_conformity_status(
-            ml_result=ml_result,
             dl_result=dl_result,
         )
 
@@ -112,19 +105,17 @@ class PrudenciaReportBuilder:
     def _build_ai_act(
         self,
         *,
-        ml_result: dict[str, Any],
         dl_result: dict[str, Any],
     ) -> AIActClassification:
         """
         Détermine la classification principale à partir des résultats
         disponibles.
 
-        Le résultat ML est prioritaire lorsqu'il contient une classe
-        explicitement prédite.
+        Le résultat Deep Learning fournit la classification principale.
         """
 
         classification = self._first_value(
-            ml_result,
+            dl_result,
             [
                 "prediction",
                 "predicted_class",
@@ -134,26 +125,7 @@ class PrudenciaReportBuilder:
             ],
         )
 
-        if classification is None:
-            classification = self._first_value(
-                dl_result,
-                [
-                    "prediction",
-                    "predicted_class",
-                    "classification",
-                    "risk_level",
-                    "label",
-                ],
-            )
-
-        confidence = self._extract_confidence(
-            ml_result
-        )
-
-        if confidence is None:
-            confidence = self._extract_confidence(
-                dl_result
-            )
+        confidence = self._extract_confidence(dl_result)
 
         justification = self._first_value(
             dl_result,
@@ -165,16 +137,6 @@ class PrudenciaReportBuilder:
                 "analysis",
             ],
         )
-
-        if justification is None:
-            justification = self._first_value(
-                ml_result,
-                [
-                    "justification",
-                    "explanation",
-                    "summary",
-                ],
-            )
 
         return AIActClassification(
             classification=str(
@@ -193,19 +155,15 @@ class PrudenciaReportBuilder:
     def _build_risks(
         self,
         *,
-        ml_result: dict[str, Any],
         dl_result: dict[str, Any],
     ) -> list[Risk]:
         """
-        Fusionne les risques provenant des moteurs ML et DL.
+        Convertit les risques produits par le moteur Deep Learning.
         """
 
         risks: list[Risk] = []
 
-        for source_result in (
-            ml_result,
-            dl_result,
-        ):
+        for source_result in (dl_result,):
             raw_risks = source_result.get(
                 "risks",
                 [],
@@ -309,19 +267,15 @@ class PrudenciaReportBuilder:
     def _build_recommendations(
         self,
         *,
-        ml_result: dict[str, Any],
         dl_result: dict[str, Any],
     ) -> list[Recommendation]:
         """
-        Fusionne les recommandations issues des moteurs ML et DL.
+        Convertit les recommandations du moteur Deep Learning.
         """
 
         recommendations: list[Recommendation] = []
 
-        for source_result in (
-            ml_result,
-            dl_result,
-        ):
+        for source_result in (dl_result,):
             raw_recommendations = source_result.get(
                 "recommendations",
                 [],
@@ -574,7 +528,6 @@ class PrudenciaReportBuilder:
     def _build_conformity_status(
         self,
         *,
-        ml_result: dict[str, Any],
         dl_result: dict[str, Any],
     ) -> str:
         """
@@ -583,23 +536,13 @@ class PrudenciaReportBuilder:
         """
 
         status = self._first_value(
-            ml_result,
+            dl_result,
             [
                 "conformity_status",
                 "compliance_status",
                 "status",
             ],
         )
-
-        if status is None:
-            status = self._first_value(
-                dl_result,
-                [
-                    "conformity_status",
-                    "compliance_status",
-                    "status",
-                ],
-            )
 
         return str(
             status or "À déterminer"

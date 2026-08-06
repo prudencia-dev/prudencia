@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pymupdf
 
-
 UPLOAD_DIR = Path("/uploads")
 
 

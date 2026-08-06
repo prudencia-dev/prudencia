@@ -1,8 +1,8 @@
-from pathlib import Path
 import hashlib
 import shutil
-from app.database import get_connection
+from pathlib import Path
 
+from app.database import get_connection
 
 UPLOAD_DIR = Path("/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

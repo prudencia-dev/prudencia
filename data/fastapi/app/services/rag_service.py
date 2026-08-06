@@ -1,23 +1,25 @@
 
 from __future__ import annotations
+
+import os
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 from uuid import UUID
-from fastapi import UploadFile
+
 #from app.ai.camembert import get_embedding
 from app.ai.bge_m3 import get_embedding
-import os
 from app.ai.rag import (
     DEFAULT_COLLECTION,
     add_chunks,
-    reset_collection,
     delete_document_embeddings,
+    reset_collection,
 )
 from app.database import get_connection
 from app.services.chunking_service import save_chunks, split_text
 from app.services.document_service import save_uploaded_file
 from app.services.pdf_service import extract_pdf_text
-from pathlib import Path
+from fastapi import UploadFile
 
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
 #DEFAULT_EMBEDDING_MODEL = "almanach/camembert-base"

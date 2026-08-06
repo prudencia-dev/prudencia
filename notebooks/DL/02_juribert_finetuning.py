@@ -45,9 +45,9 @@ Dépendances principales :
     accelerate
 
 Remarque :
-    Le fine-tuning d'un Transformer est nettement plus coûteux que
-    l'entraînement d'un Random Forest. Un GPU CUDA est recommandé, mais le
-    script peut fonctionner sur CPU avec un petit modèle et un petit dataset.
+    Le fine-tuning d'un Transformer est coûteux. Un GPU CUDA est recommandé,
+    mais le script peut fonctionner sur CPU avec un petit modèle et un petit
+    dataset.
 """
 
 from __future__ import annotations
@@ -81,7 +81,6 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. CONFIGURATION GÉNÉRALE

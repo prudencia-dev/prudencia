@@ -1,14 +1,15 @@
 from __future__ import annotations
+
 from typing import Any
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from pydantic import BaseModel, Field
-from app.ai.camembert import (
-    get_camembert_status,
-    get_embedding as get_camembert_embedding,
-)
 
 from app.ai.bge_m3 import (
     get_embedding as get_rag_embedding,
+)
+from app.ai.camembert import (
+    get_camembert_status,
+)
+from app.ai.camembert import (
+    get_embedding as get_camembert_embedding,
 )
 from app.ai.rag import (
     DEFAULT_COLLECTION,
@@ -19,7 +20,19 @@ from app.ai.rag import (
     list_collections,
     search_chunks,
 )
+from app.api.document_analysis import (
+    router as document_analysis_router,
+)
+from app.api.fine_tuning import router as fine_tuning_router
+from app.api.model_registry import router as model_registry_router
+from app.api.rag import router as rag_router
+from app.api.reports import router as reports_router
+from app.api.training_history import (
+    router as training_history_router,
+)
 from app.database import init_database, save_analysis
+from app.logging_config import configure_logging
+from app.request_context import RequestContextMiddleware
 from app.services.chunking_service import (
     create_chunks,
     split_text,
@@ -30,34 +43,22 @@ from app.services.document_service import (
     save_uploaded_file,
 )
 from app.services.pdf_service import extract_pdf_text
-from app.api.model_registry import router as model_registry_router
-from app.api.fine_tuning import router as fine_tuning_router
-from app.api.rag import router as rag_router
-from app.api.training_history import (
-    router as training_history_router,
-)
-from app.api.ml import router as ml_router
-from app.api.reports import router as reports_router
-from app.api.document_analysis import (
-    router as document_analysis_router,
-)
-from app.api.questionnaire_ml import (
-    router as questionnaire_ml_router,
-)
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 
+configure_logging()
 
 app = FastAPI(
     title="PRUDENCIA API",
     version="0.2.0",
 )
+app.add_middleware(RequestContextMiddleware)
 app.include_router(model_registry_router)
 app.include_router(fine_tuning_router)
 app.include_router(rag_router)
 app.include_router(training_history_router)
-app.include_router(ml_router)
 app.include_router(reports_router)
 app.include_router(document_analysis_router)
-app.include_router(questionnaire_ml_router)
 
 
 class AnalyseRequest(BaseModel):

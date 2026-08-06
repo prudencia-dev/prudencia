@@ -26,6 +26,7 @@ __pycache__/
 .venv/
 venv/
 .cache/
+.pytest_cache/
 
 # Modèles IA et checkpoints
 **/checkpoints/
