@@ -42,10 +42,6 @@ Les premières routes, définies directement dans `main.py`, sont des primitives
 
 | Méthode | Chemin | Fonction |
 |---|---|---|
-| GET | `/ml/health` | État du modèle Random Forest |
-| POST | `/ml/train` | Entraînement depuis un CSV |
-| POST | `/ml/reset` | Désactivation du modèle courant |
-| POST | `/ml/predict` | Prédiction tabulaire |
 | GET | `/fine-tuning/models` | Modèles DL configurés |
 | GET | `/fine-tuning/history` | Historique des entraînements |
 | GET | `/fine-tuning/best-model` | Meilleur modèle entraîné |
@@ -54,7 +50,7 @@ Les premières routes, définies directement dans `main.py`, sont des primitives
 | POST | `/fine-tuning/predict` | Classification d'un texte |
 | GET | `/training/history` | Historique unifié ML/DL |
 
-## Registre, questionnaire et rapports
+## Registre et rapports
 
 | Méthode | Chemin | Fonction |
 |---|---|---|
@@ -64,12 +60,9 @@ Les premières routes, définies directement dans `main.py`, sont des primitives
 | GET | `/models/{model_id}` | Détail d'un modèle |
 | POST | `/models/{model_id}/activate` | Activation exclusive par tâche |
 | POST | `/models/{model_id}/archive` | Archivage d'un modèle |
-| GET | `/questionnaire-mvp/active` | Questionnaire actif et questions |
-| POST | `/questionnaire-mvp/submit` | Sauvegarde des réponses et création des variables ML |
 | POST | `/document-analysis/extract` | Extraction d'un PDF destiné à l'analyse |
 | GET | `/reports/health` | Disponibilité du générateur |
 | POST | `/reports/generate` | Rapport fondé sur texte, DL et RAG |
-| POST | `/reports/generate-ml` | Rapport fondé sur le questionnaire et le ML |
 
 ## Services applicatifs
 

@@ -1,6 +1,6 @@
 # PRUDENCIA
 
-PRUDENCIA est une application d'aide à l'analyse de conformité des systèmes d'intelligence artificielle. Elle combine un questionnaire métier, un modèle de Machine Learning tabulaire, un modèle juridique JuriBERT et une recherche documentaire RAG.
+PRUDENCIA est une application d'aide à l'analyse documentaire de conformité des systèmes d'intelligence artificielle. Elle combine le modèle juridique JuriBERT et une recherche documentaire RAG.
 
 ## Architecture
 
@@ -8,10 +8,9 @@ PRUDENCIA est une application d'aide à l'analyse de conformité des systèmes d
 |---|---|---|
 | Interface | Streamlit | Saisie, entraînement, consultation et génération de rapports |
 | API | FastAPI | Endpoints métier, orchestration et validation des requêtes |
-| Machine Learning | scikit-learn | Classification à partir du questionnaire |
 | Deep Learning | Transformers / JuriBERT | Classification de textes juridiques |
 | RAG | BGE-M3 / ChromaDB | Indexation et recherche sémantique de documents |
-| Données | PostgreSQL | Projets, analyses, questionnaires et registre des modèles |
+| Données | PostgreSQL | Analyses, documents et registre des modèles |
 | Exécution | Docker Compose | Assemblage des services locaux |
 
 ```mermaid
@@ -19,7 +18,6 @@ flowchart LR
     U["Utilisateur"] --> UI["Streamlit"]
     UI --> API["FastAPI"]
     API --> PG["PostgreSQL"]
-    API --> ML["Random Forest"]
     API --> DL["JuriBERT"]
     API --> EMB["BGE-M3"]
     EMB --> CH["ChromaDB"]

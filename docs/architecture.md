@@ -15,7 +15,6 @@ flowchart TB
         DM["Objets du domaine"]
     end
     subgraph Intelligence["Intelligence artificielle"]
-        RF["Random Forest"]
         JB["JuriBERT"]
         BG["BGE-M3"]
     end
@@ -27,7 +26,6 @@ flowchart TB
     ST -->|HTTP JSON / multipart| RT
     RT --> SV
     SV --> DM
-    SV --> RF
     SV --> JB
     SV --> BG
     SV --> DB
@@ -45,15 +43,6 @@ flowchart TB
 5. `rag_service` calcule les embeddings BGE-M3 et les stocke dans ChromaDB.
 6. Une recherche transforme la question en embedding, interroge la collection et renvoie les passages les plus proches.
 7. `report_builder` rassemble classification, risques, recommandations et références.
-
-## Flux Machine Learning
-
-1. Un CSV est envoyé à `/ml/train`.
-2. La route valide la cible, les variables et les hyperparamètres.
-3. `MachineLearningTrainer` prépare les données, entraîne un Random Forest et calcule les métriques.
-4. Le modèle et ses informations d'entraînement sont sauvegardés.
-5. `/ml/predict` applique le même prétraitement aux réponses du questionnaire.
-6. Le résultat peut être transformé en rapport métier par `/reports/generate-ml`.
 
 ## Flux Deep Learning
 

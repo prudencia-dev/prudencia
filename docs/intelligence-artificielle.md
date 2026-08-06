@@ -1,24 +1,6 @@
 # Intelligence artificielle
 
-PRUDENCIA combine trois approches complémentaires. Le Random Forest exploite des variables structurées, JuriBERT classe des descriptions juridiques et le RAG retrouve les passages documentaires pertinents.
-
-## Machine Learning tabulaire
-
-`ai/machine_learning/trainer.py` contient `MachineLearningTrainer`.
-
-Pipeline :
-
-1. lecture du CSV avec pandas ;
-2. validation de la colonne cible et des variables ;
-3. séparation entraînement/test avec scikit-learn ;
-4. encodage des variables catégorielles ;
-5. entraînement d'un `RandomForestClassifier` ;
-6. calcul de l'accuracy, précision, rappel, F1 et matrice de confusion ;
-7. calcul de l'importance des variables ;
-8. sauvegarde de l'artefact avec joblib ;
-9. enregistrement de l'exécution dans l'historique.
-
-Le fichier sauvegardé contient le modèle et les informations nécessaires pour reproduire le prétraitement lors d'une prédiction. Les colonnes et catégories du CSV d'inférence doivent rester compatibles avec celles de l'entraînement.
+PRUDENCIA combine deux approches complémentaires. JuriBERT classe des descriptions juridiques et le RAG retrouve les passages documentaires pertinents.
 
 ## Deep Learning juridique
 
