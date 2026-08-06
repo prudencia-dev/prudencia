@@ -4,9 +4,15 @@ import time
 from pathlib import Path
 from typing import Any
 
-import joblib
 import pandas as pd
-
+from app.services.ml_model_store import (
+    ML_MODEL_STORE,
+    MachineLearningModelStore,
+)
+from app.services.training_history_service import (
+    save_model_reset,
+    save_training_execution,
+)
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
@@ -23,11 +29,6 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
-
-from app.services.training_history_service import (
-    save_model_reset,
-    save_training_execution,
-)
 
 
 class MachineLearningTrainer:
@@ -74,6 +75,7 @@ class MachineLearningTrainer:
         class_weight: str | None = None,
         random_state: int = 42,
         test_size: float = 0.20,
+        model_store: MachineLearningModelStore = ML_MODEL_STORE,
     ) -> None:
         """
         Initialise les hyperparamètres du Random Forest.
@@ -100,6 +102,7 @@ class MachineLearningTrainer:
         self.class_weight = class_weight
         self.random_state = int(random_state)
         self.test_size = float(test_size)
+        self.model_store = model_store
 
         if self.n_estimators < 1:
             raise ValueError("n_estimators doit être supérieur ou égal à 1.")
@@ -573,13 +576,35 @@ class MachineLearningTrainer:
         metrics = {
             "accuracy": float(accuracy_score(y_test, predictions)),
             "balanced_accuracy": float(balanced_accuracy_score(y_test, predictions)),
-            "precision": float(precision_score(y_test, predictions, average="weighted", zero_division=0)),
-            "precision_weighted": float(precision_score(y_test, predictions, average="weighted", zero_division=0)),
-            "recall": float(recall_score(y_test, predictions, average="weighted", zero_division=0)),
-            "recall_weighted": float(recall_score(y_test, predictions, average="weighted", zero_division=0)),
-            "f1": float(f1_score(y_test, predictions, average="weighted", zero_division=0)),
-            "f1_weighted": float(f1_score(y_test, predictions, average="weighted", zero_division=0)),
-            "macro_f1": float(f1_score(y_test, predictions, average="macro", zero_division=0)),
+            "precision": float(
+                precision_score(
+                    y_test, predictions, average="weighted", zero_division=0
+                )
+            ),
+            "precision_weighted": float(
+                precision_score(
+                    y_test, predictions, average="weighted", zero_division=0
+                )
+            ),
+            "recall": float(
+                recall_score(
+                    y_test, predictions, average="weighted", zero_division=0
+                )
+            ),
+            "recall_weighted": float(
+                recall_score(
+                    y_test, predictions, average="weighted", zero_division=0
+                )
+            ),
+            "f1": float(
+                f1_score(y_test, predictions, average="weighted", zero_division=0)
+            ),
+            "f1_weighted": float(
+                f1_score(y_test, predictions, average="weighted", zero_division=0)
+            ),
+            "macro_f1": float(
+                f1_score(y_test, predictions, average="macro", zero_division=0)
+            ),
             "mcc": float(matthews_corrcoef(y_test, predictions)),
             "class_names": class_names,
             "per_class": per_class,
@@ -592,25 +617,29 @@ class MachineLearningTrainer:
         feature_importance = sorted(
             [
                 {"feature": str(name), "importance": float(value)}
-                for name, value in zip(transformed_names, classifier.feature_importances_, strict=False)
+                for name, value in zip(
+                    transformed_names,
+                    classifier.feature_importances_,
+                    strict=False,
+                )
             ],
             key=lambda row: row["importance"],
             reverse=True,
         )
 
-        self.MODEL_PATH.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        # Le fichier Joblib contient à la fois :
-        # - le prétraitement ;
-        # - l'encodage ;
-        # - le Random Forest entraîné.
-        joblib.dump(
+        artifact = self.model_store.save_and_activate(
             self.model,
-            self.MODEL_PATH,
+            metadata={
+                "software_version": self.MODEL_VERSION,
+                "algorithm": "RandomForestClassifier",
+                "feature_columns": features.columns.tolist(),
+                "target_column": target_column,
+                "classes": [str(value) for value in classifier.classes_.tolist()],
+                "metrics": metrics,
+            },
         )
+        model_version = artifact["version"]
+        model_path = self.model_store.root / artifact["model_path"]
 
         execution_time_seconds = (
             time.perf_counter()
@@ -671,7 +700,7 @@ class MachineLearningTrainer:
         save_training_execution(
             model_type="machine_learning",
             model_name="Random Forest",
-            model_version=self.MODEL_VERSION,
+            model_version=model_version,
             task_name="classification",
             execution_type="training",
             dataset_name=Path(csv_path).name,
@@ -719,10 +748,8 @@ class MachineLearningTrainer:
         return {
             "success": True,
             "model_name": "Random Forest",
-            "model_version": self.MODEL_VERSION,
-            "model_path": str(
-                self.MODEL_PATH
-            ),
+            "model_version": model_version,
+            "model_path": str(model_path),
             "dataset_rows": len(dataframe),
             "train_rows": len(x_train),
             "test_rows": len(x_test),
@@ -797,20 +824,12 @@ class MachineLearningTrainer:
         avec le modèle sauvegardé.
         """
 
-        if not self.MODEL_PATH.exists():
-            raise RuntimeError(
-                "Le modèle Machine Learning "
-                "n'est pas entraîné."
-            )
-
         if input_dataframe.empty:
             raise ValueError(
                 "Aucune donnée n'a été fournie."
             )
 
-        model: Pipeline = joblib.load(
-            self.MODEL_PATH,
-        )
+        model, artifact = self.model_store.load_active()
 
         predictions = model.predict(
             input_dataframe,
@@ -826,6 +845,7 @@ class MachineLearningTrainer:
 
         return {
             "success": True,
+            "model_version": artifact["version"],
             "predictions": [
                 str(value)
                 for value
@@ -853,18 +873,19 @@ class MachineLearningTrainer:
         le moteur dans son état non entraîné.
         """
 
-        model_deleted = False
-
-        if self.MODEL_PATH.exists():
-            self.MODEL_PATH.unlink()
-            model_deleted = True
+        active_artifact = self.model_store.get_active_artifact()
+        reset_result = self.model_store.deactivate()
 
         self.model = None
 
         save_model_reset(
             model_type="machine_learning",
             model_name="Random Forest",
-            model_version=self.MODEL_VERSION,
+            model_version=(
+                str(active_artifact["version"])
+                if active_artifact
+                else self.MODEL_VERSION
+            ),
             reason=(
                 "Réinitialisation du modèle "
                 "Machine Learning depuis PRUDENCIA"
@@ -878,6 +899,10 @@ class MachineLearningTrainer:
                 "a été réinitialisé."
             ),
             "model_name": "Random Forest",
-            "model_version": self.MODEL_VERSION,
-            "model_deleted": model_deleted,
+            "model_version": (
+                str(active_artifact["version"])
+                if active_artifact
+                else self.MODEL_VERSION
+            ),
+            **reset_result,
         }

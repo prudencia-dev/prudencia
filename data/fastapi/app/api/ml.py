@@ -5,7 +5,8 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 import pandas as pd
-
+from app.ai.machine_learning.trainer import MachineLearningTrainer
+from app.services.ml_model_store import ML_MODEL_STORE
 from fastapi import (
     APIRouter,
     File,
@@ -14,8 +15,6 @@ from fastapi import (
     UploadFile,
 )
 from pydantic import BaseModel
-
-from app.ai.machine_learning.trainer import MachineLearningTrainer
 
 
 class PredictionRequest(BaseModel):
@@ -28,9 +27,6 @@ router = APIRouter(
     prefix="/ml",
     tags=["Machine Learning"],
 )
-
-MODEL_PATH = Path("models") / "machine_learning" / "random_forest.joblib"
-
 
 def _parse_optional_integer(value: str, field_name: str) -> int | None:
     """Transforme une chaîne vide en None, ou convertit la valeur en entier."""
@@ -83,17 +79,22 @@ def _parse_optional_choice(
 def ml_health() -> dict[str, Any]:
     """Retourne l'état du moteur Machine Learning."""
 
-    model_exists = MODEL_PATH.exists()
+    artifact = ML_MODEL_STORE.get_active_artifact()
+    model_exists = artifact is not None
 
     return {
         "status": "ready" if model_exists else "not_trained",
         "model": "Random Forest",
         "version": (
-            MachineLearningTrainer.MODEL_VERSION
+            artifact["version"]
             if model_exists
             else "Non disponible"
         ),
-        "model_path": str(MODEL_PATH),
+        "model_path": (
+            artifact["resolved_model_path"]
+            if artifact
+            else None
+        ),
         "available": model_exists,
     }
 
