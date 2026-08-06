@@ -106,10 +106,6 @@ class PrudenciaReport:
 
     conclusion: str = ""
 
-    machine_learning_result: dict[str, Any] = field(
-        default_factory=dict
-    )
-
     deep_learning_result: dict[str, Any] = field(
         default_factory=dict
     )
@@ -124,5 +120,4 @@ class PrudenciaReport:
         """
 
         return asdict(self)
-
 

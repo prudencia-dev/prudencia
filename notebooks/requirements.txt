@@ -1,12 +1,11 @@
 # ==========================================================
 # PRUDENCIA
-# Notebooks Machine Learning & Deep Learning
+# Notebook Deep Learning
 # ==========================================================
 #
 # Ce fichier regroupe les dépendances nécessaires à
 # l'exécution des notebooks Jupyter utilisés pour la
-# démonstration des modèles Machine Learning (Random Forest)
-# et Deep Learning (JuriBERT).
+# démonstration du modèle Deep Learning JuriBERT.
 #
 # Les dépendances de l'application FastAPI, Streamlit ou
 # Docker ne sont volontairement pas incluses.
@@ -48,13 +47,10 @@ seaborn>=0.13.2
 
 
 ############################################################
-# Machine Learning
+# Métriques et préparation du dataset Deep Learning
 ############################################################
 
 scikit-learn>=1.5.0
-joblib>=1.4.0
-
-
 ############################################################
 # Deep Learning
 ############################################################

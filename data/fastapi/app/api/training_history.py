@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
-
 from app.services.training_history_service import (
     get_training_history,
 )
-
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(
     prefix="/training",
@@ -19,7 +17,7 @@ router = APIRouter(
 def training_history() -> dict[str, Any]:
     """
     Retourne l'historique des entraînements
-    Fine-Tuning et Machine Learning.
+    Deep Learning et Fine-Tuning.
     """
 
     try:
