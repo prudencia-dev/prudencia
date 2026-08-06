@@ -14,11 +14,20 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - /opt/prudencia/data/postgres:/var/lib/postgresql/data
+      - ../../data/postgres:/var/lib/postgresql/data
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: prudencia-chromadb
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - ../../data/chromadb:/data
 
   api:
     build:
-      context: /opt/prudencia/data/fastapi
+      context: ../../data/fastapi
       dockerfile: Dockerfile
     container_name: prudencia-api
     restart: unless-stopped
@@ -27,6 +36,7 @@ services:
       - .env
     environment:
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       CHROMA_HOST: chromadb
       CHROMA_PORT: 8000
       CHROMA_COLLECTION: prudencia_legal_documents
@@ -37,32 +47,31 @@ services:
     ports:
       - "${API_PORT}:8000"
     volumes:
-      - /opt/prudencia/data/fastapi:/app
-      - /opt/prudencia/data/uploads:/uploads
-      - /opt/prudencia/data/models/huggingface:/models/huggingface
-      - /opt/prudencia/models:/models
+      - ../../data/fastapi:/app
+      - ../../data/uploads:/uploads
+      - ../../data/models/huggingface:/models/huggingface
+      - ../../models:/models
     depends_on:
       - postgres
       - chromadb
-
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: prudencia-chromadb
-    restart: unless-stopped
-    ports:
-      - "8001:8000"
-    volumes:
-      - /opt/prudencia/data/chromadb:/data
 
   streamlit:
     image: python:3.12-slim
     container_name: prudencia-streamlit
     restart: unless-stopped
     working_dir: /app
-    command: sh -c "pip install -r requirements.txt && streamlit run app.py --server.address=0.0.0.0 --server.port=8501"
+    env_file:
+      - .env
+    environment:
+      API_URL: http://api:8000
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+      streamlit run app.py
+      --server.address=0.0.0.0
+      --server.port=8501"
     ports:
       - "8501:8501"
     volumes:
-      - /opt/prudencia/data/streamlit:/app
+      - ../../data/streamlit:/app
     depends_on:
       - api
