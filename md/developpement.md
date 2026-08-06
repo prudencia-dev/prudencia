@@ -40,7 +40,7 @@ Les lots d'optimisation ajoutent leurs propres tests ciblés sur leurs branches 
 4. Convertir les erreurs attendues en statuts HTTP explicites.
 5. Enregistrer le routeur dans `app/main.py`.
 6. Ajouter des tests de succès, validation et erreur.
-7. Mettre à jour `docs/backend-api.md`.
+7. Mettre à jour `md/backend-api.md`.
 
 ## Ajouter un modèle
 

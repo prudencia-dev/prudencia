@@ -16,8 +16,10 @@ Le notebook est indépendant de l'application FastAPI et Streamlit. Il explique 
 ## Arborescence
 
 ```text
+md/
+└── NOTEBOOKS.md
+
 notebooks/
-├── README.md
 ├── requirements.txt
 ├── datasets/dl/
 │   └── dl_juribert_training_cases_v2.csv

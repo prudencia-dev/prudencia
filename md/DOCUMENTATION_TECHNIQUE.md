@@ -7,7 +7,7 @@ Cette documentation décrit le code source du MVP PRUDENCIA. Elle s'adresse aux 
 1. [Architecture et flux](architecture.md) pour comprendre les composants.
 2. [Backend et API](backend-api.md) pour les contrats HTTP et la logique serveur.
 3. [Interface Streamlit](interface-streamlit.md) pour les parcours utilisateur.
-4. [Intelligence artificielle](intelligence-artificielle.md) pour les pipelines ML, DL et RAG.
+4. [Intelligence artificielle](intelligence-artificielle.md) pour les pipelines Deep Learning et RAG.
 5. [Données et persistance](donnees.md) pour PostgreSQL, ChromaDB et les artefacts.
 6. [Configuration et déploiement](deploiement.md) pour exécuter le projet.
 7. [Développement et tests](developpement.md) pour contribuer.

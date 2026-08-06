@@ -25,7 +25,7 @@ flowchart LR
 
 ## Démarrage local
 
-1. Créer `compose/dev/.env` à partir des variables décrites dans [Configuration et déploiement](docs/deploiement.md).
+1. Créer `compose/dev/.env` à partir des variables décrites dans [Configuration et déploiement](deploiement.md).
 2. Depuis `compose/dev`, lancer `docker compose up --build`.
 3. Ouvrir Streamlit sur `http://localhost:8501`.
 4. Consulter l'API sur le port défini par `API_PORT` et sa documentation OpenAPI sur `/docs`.
@@ -34,16 +34,20 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 
 ## Documentation
 
-- [Guide de documentation](docs/README.md)
-- [Architecture et flux](docs/architecture.md)
-- [Backend et API](docs/backend-api.md)
-- [Interface Streamlit](docs/interface-streamlit.md)
-- [Intelligence artificielle](docs/intelligence-artificielle.md)
-- [Données et persistance](docs/donnees.md)
-- [Configuration et déploiement](docs/deploiement.md)
-- [Développement et tests](docs/developpement.md)
-- [Référence des modules](docs/reference-modules.md)
-- [Notebooks pédagogiques](notebooks/README.md)
+- [Guide de documentation](DOCUMENTATION_TECHNIQUE.md)
+- [Architecture et flux](architecture.md)
+- [Backend et API](backend-api.md)
+- [Interface Streamlit](interface-streamlit.md)
+- [Intelligence artificielle](intelligence-artificielle.md)
+- [Données et persistance](donnees.md)
+- [Configuration et déploiement](deploiement.md)
+- [Développement et tests](developpement.md)
+- [Référence des modules](reference-modules.md)
+- [Notebooks pédagogiques](NOTEBOOKS.md)
+- [Base de données locale](BASE_DONNEES_LOCALE.md)
+- [Rapport CI et qualité](RAPPORT_EVOLUTION_CI_QUALITE.md)
+- [Rapport sur la gestion des erreurs](RAPPORT_EVOLUTION_GESTION_ERREURS_API.md)
+- [Rapport sur la centralisation Markdown](RAPPORT_EVOLUTION_CENTRALISATION_MARKDOWN.md)
 
 ## Organisation du dépôt
 
