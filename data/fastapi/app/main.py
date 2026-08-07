@@ -53,7 +53,7 @@ from pydantic import BaseModel, Field
 
 configure_logging()
 
-API_VERSION = "1.0.0"
+API_VERSION = "1.2.0"
 
 app = FastAPI(
     title="PRUDENCIA API",
