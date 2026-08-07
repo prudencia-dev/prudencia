@@ -35,6 +35,8 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 ## Documentation
 
 - [Guide de documentation](DOCUMENTATION_TECHNIQUE.md)
+- [Schéma de l'architecture technique](SCHEMA_ARCHITECTURE_TECHNIQUE.md)
+- [Schéma de l'architecture du code source](SCHEMA_ARCHITECTURE_CODE_SOURCE.md)
 - [Architecture et flux](architecture.md)
 - [Backend et API](backend-api.md)
 - [Interface Streamlit](interface-streamlit.md)
@@ -57,6 +59,7 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 7. [07 — Qualité du backend](07_RAPPORT_EVOLUTION_QUALITE_BACKEND.md)
 8. [08 — Intégration et recette du MVP](08_RAPPORT_EVOLUTION_INTEGRATION_RECETTE_MVP.md)
 9. [09 — Release v1.2.0](09_RAPPORT_EVOLUTION_RELEASE_V1_2_0.md)
+10. [10 — Documentation technique et schémas d'architecture](10_RAPPORT_EVOLUTION_DOCUMENTATION_ARCHITECTURE.md)
 
 ## Organisation du dépôt
 
