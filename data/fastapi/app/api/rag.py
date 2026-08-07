@@ -10,6 +10,7 @@ from app.services.rag_service import (
     index_pdf_document,
     reset_rag_database,
 )
+from app.services.upload_security import UploadTooLargeError
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 router = APIRouter(prefix="/rag", tags=["RAG"])
@@ -59,6 +60,11 @@ def rag_index_document(
             chunk_overlap=chunk_overlap,
             collection_name=collection_name,
         )
+    except UploadTooLargeError as error:
+        raise HTTPException(
+            status_code=413,
+            detail=str(error),
+        ) from error
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

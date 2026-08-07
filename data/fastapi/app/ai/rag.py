@@ -4,6 +4,7 @@ import os
 from typing import Any
 
 import chromadb
+from app.ai.embedding_config import RAG_EMBEDDING_MODEL
 
 CHROMA_HOST = os.getenv("CHROMA_HOST", "chromadb")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
@@ -47,13 +48,69 @@ def list_collections() -> list[dict]:
 
 def get_or_create_collection(
     collection_name: str = DEFAULT_COLLECTION,
+    *,
+    embedding_dimension: int | None = None,
 ):
     client = get_chroma_client()
 
-    return client.get_or_create_collection(
+    collection = client.get_or_create_collection(
         name=collection_name,
-        metadata={"hnsw:space": "cosine"},
+        metadata={
+            "hnsw:space": "cosine",
+            "embedding_model": RAG_EMBEDDING_MODEL,
+            "embedding_normalized": True,
+            **(
+                {"embedding_dimension": embedding_dimension}
+                if embedding_dimension is not None
+                else {}
+            ),
+        },
     )
+
+    metadata = collection.metadata or {}
+    stored_model = metadata.get("embedding_model")
+    stored_dimension = metadata.get("embedding_dimension")
+
+    collection_count = collection.count()
+    if collection_count and stored_model is None:
+        raise ValueError(
+            "La collection existante ne déclare pas son modèle d'embedding. "
+            "Réinitialisez-la avant de l'utiliser avec BGE-M3."
+        )
+    if stored_model not in {None, RAG_EMBEDDING_MODEL}:
+        raise ValueError(
+            f"La collection utilise {stored_model}, mais l'application utilise "
+            f"{RAG_EMBEDDING_MODEL}."
+        )
+    if (
+        embedding_dimension is not None
+        and stored_dimension is not None
+        and int(stored_dimension) != embedding_dimension
+    ):
+        raise ValueError(
+            f"Dimension d'embedding incompatible : {stored_dimension} stockée, "
+            f"{embedding_dimension} reçue."
+        )
+
+    if not collection_count and (
+        stored_model is None
+        or (embedding_dimension is not None and stored_dimension is None)
+    ):
+        collection.modify(
+            metadata={
+                **metadata,
+                "hnsw:space": "cosine",
+                "embedding_model": RAG_EMBEDDING_MODEL,
+                "embedding_normalized": True,
+                **(
+                    {"embedding_dimension": embedding_dimension}
+                    if embedding_dimension is not None
+                    else {}
+                ),
+            }
+        )
+
+    return collection
 
 
 def add_chunk(
@@ -63,7 +120,10 @@ def add_chunk(
     embedding: list[float],
     metadata: dict[str, Any],
 ) -> dict:
-    collection = get_or_create_collection(collection_name)
+    collection = get_or_create_collection(
+        collection_name,
+        embedding_dimension=len(embedding),
+    )
 
     collection.upsert(
         ids=[chunk_id],
@@ -89,7 +149,20 @@ def add_chunks(
     if not ids:
         raise ValueError("Aucun chunk à indexer.")
 
-    collection = get_or_create_collection(collection_name)
+    lengths = {len(ids), len(texts), len(embeddings), len(metadatas)}
+    if len(lengths) != 1:
+        raise ValueError(
+            "Les identifiants, textes, embeddings et métadonnées doivent "
+            "avoir la même longueur."
+        )
+
+    dimensions = {len(embedding) for embedding in embeddings}
+    if len(dimensions) != 1:
+        raise ValueError("Tous les embeddings doivent avoir la même dimension.")
+    collection = get_or_create_collection(
+        collection_name,
+        embedding_dimension=dimensions.pop(),
+    )
 
     collection.upsert(
         ids=ids,
@@ -111,7 +184,10 @@ def search_chunks(
     collection_name: str = DEFAULT_COLLECTION,
     limit: int = 5,
 ) -> dict:
-    collection = get_or_create_collection(collection_name)
+    collection = get_or_create_collection(
+        collection_name,
+        embedding_dimension=len(query_embedding),
+    )
 
     if collection.count() == 0:
         return {

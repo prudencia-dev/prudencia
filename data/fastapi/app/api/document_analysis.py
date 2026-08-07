@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import fitz
+from app.services.upload_security import (
+    MAX_PDF_UPLOAD_BYTES,
+    UploadTooLargeError,
+    read_limited_upload,
+    sanitized_filename,
+)
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 router = APIRouter(
@@ -20,19 +26,30 @@ async def extract_project_pdf(
     ni indexé dans ChromaDB.
     """
 
-    if file.content_type != "application/pdf":
+    try:
+        safe_filename = sanitized_filename(file.filename, ".pdf")
+    except ValueError as error:
         raise HTTPException(
             status_code=400,
-            detail="Le fichier doit être un PDF.",
+            detail=str(error),
+        ) from error
+
+    try:
+        pdf_bytes = await read_limited_upload(
+            file,
+            max_bytes=MAX_PDF_UPLOAD_BYTES,
+            require_pdf_signature=True,
         )
-
-    pdf_bytes = await file.read()
-
-    if not pdf_bytes:
+    except UploadTooLargeError as error:
+        raise HTTPException(
+            status_code=413,
+            detail=str(error),
+        ) from error
+    except ValueError as error:
         raise HTTPException(
             status_code=400,
-            detail="Le fichier PDF est vide.",
-        )
+            detail=str(error),
+        ) from error
 
     try:
         document = fitz.open(
@@ -68,7 +85,7 @@ async def extract_project_pdf(
 
         return {
             "success": True,
-            "filename": file.filename,
+            "filename": safe_filename,
             "page_count": document.page_count,
             "character_count": len(extracted_text),
             "text": extracted_text,

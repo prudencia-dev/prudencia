@@ -47,6 +47,7 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 
 ### Rapports d'évolution — ordre chronologique
 
+0. [00 — Optimisation des uploads et du RAG](00_RAPPORT_EVOLUTION_UPLOADS_RAG.md)
 1. [01 — CI et qualité](01_RAPPORT_EVOLUTION_CI_QUALITE.md)
 2. [02 — Gestion des erreurs API](02_RAPPORT_EVOLUTION_GESTION_ERREURS_API.md)
 3. [03 — Centralisation des fichiers Markdown](03_RAPPORT_EVOLUTION_CENTRALISATION_MARKDOWN.md)
