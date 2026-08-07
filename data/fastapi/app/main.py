@@ -53,9 +53,11 @@ from pydantic import BaseModel, Field
 
 configure_logging()
 
+API_VERSION = "1.0.0"
+
 app = FastAPI(
     title="PRUDENCIA API",
-    version="0.2.0",
+    version=API_VERSION,
 )
 app.add_middleware(RequestContextMiddleware)
 app.include_router(model_registry_router)
@@ -92,7 +94,7 @@ def startup_event():
 def root():
     return {
         "message": "Bienvenue sur PRUDENCIA",
-        "version": "0.2.0",
+        "version": API_VERSION,
     }
 
 
