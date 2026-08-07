@@ -23,7 +23,7 @@ st.markdown(
     """
 )
 
-st.info("Version de référence : PRUDENCIA v1.0.0 — MVP de certification")
+st.info("Version de référence : PRUDENCIA v1.2.0 — MVP stabilisé")
 
 st.divider()
 st.header("Parcours d'analyse documentaire")

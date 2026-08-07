@@ -56,6 +56,7 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 6. [06 — Simplification de l'image API](06_RAPPORT_EVOLUTION_SIMPLIFICATION_IMAGE_API.md)
 7. [07 — Qualité du backend](07_RAPPORT_EVOLUTION_QUALITE_BACKEND.md)
 8. [08 — Intégration et recette du MVP](08_RAPPORT_EVOLUTION_INTEGRATION_RECETTE_MVP.md)
+9. [09 — Release v1.2.0](09_RAPPORT_EVOLUTION_RELEASE_V1_2_0.md)
 
 ## Organisation du dépôt
 
