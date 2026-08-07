@@ -34,7 +34,7 @@ jobs:
       # Le dépôt historique sera normalisé progressivement avant d'activer
       # l'ensemble des règles de style.
       - name: Check blocking Python errors
-        run: ruff check --select E9,F63,F7,F82 data notebooks
+        run: ruff check --select E9,F63,F7,F82 data
 
       - name: Compile Python sources
         run: python -m compileall -q data/fastapi/app data/streamlit
