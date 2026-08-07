@@ -2,6 +2,12 @@
 
 ## PostgreSQL
 
+Les entraînements sont historisés dans `prudencia.model_executions`. Les champs
+JSONB conservent les hyperparamètres, le profil sélectionné, l'identifiant
+Hugging Face, les empreintes SHA-256 du dataset et du code, la signature du
+benchmark et les métriques. Cette approche enrichit les bases existantes sans
+ajouter de migration structurelle.
+
 `app/database.py` construit la connexion à partir des variables `POSTGRES_*`, initialise les structures de base et sauvegarde les analyses simples.
 
 Le script `config/init/04_model_registry.sql` crée le schéma `prudencia` et deux tables dédiées aux modèles :

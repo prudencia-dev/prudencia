@@ -62,6 +62,16 @@ Les premières routes, définies directement dans `main.py`, sont des primitives
 | POST | `/fine-tuning/predict` | Classification d'un texte |
 | GET | `/training/history` | Historique unifié ML/DL |
 
+Chaque entraînement calcule une empreinte SHA-256 du dataset et du code Python
+exécuté. FastAPI produit également une signature courte à partir du dataset et
+de tous les hyperparamètres qui influencent l'expérience. Deux runs portant la
+même signature peuvent être comparés en ne faisant varier que le modèle de
+base.
+
+La réponse de `POST /fine-tuning/train` contient un bloc `traceability` avec
+l'identifiant PostgreSQL du run, sa date, les empreintes et la signature du
+benchmark.
+
 ## Registre et rapports
 
 | Méthode | Chemin | Fonction |

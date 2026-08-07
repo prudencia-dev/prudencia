@@ -351,7 +351,7 @@ def reset_rag_database(
     collection_name: str = DEFAULT_COLLECTION,
 ) -> dict[str, Any]:
     """
-    Réinitialise complètement la base documentaire RAG.
+    Réinitialise complètement la base vectorielle RAG.
 
     Cette opération supprime :
     1. la collection ChromaDB ;
@@ -449,7 +449,7 @@ def reset_rag_database(
 
     return {
         "status": "success",
-        "message": "Base documentaire RAG réinitialisée.",
+        "message": "Base vectorielle RAG réinitialisée.",
         "collection": collection_name,
         "collection_reset": True,
         "collection_existed": chroma_result.get(

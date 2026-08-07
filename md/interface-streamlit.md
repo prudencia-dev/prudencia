@@ -14,6 +14,7 @@
 | `pages/01_rag.py` | Import, indexation et gestion des documents RAG |
 | `pages/02_modeles.py` | Accès aux vues des modèles et entraînements |
 | `pages/03_rapport_documentaire.py` | Analyse d'un PDF, classification DL, recherche RAG et rapport |
+| `pages/04_benchmark_nlp.py` | Comparaison reproductible des modèles BERT entraînés |
 
 ## Modules de la page Modèles
 
@@ -43,3 +44,21 @@ L'URL de base provient de `API_URL` et vaut `http://api:8000` dans Docker. L'int
 5. Déplacer les composants réutilisables dans `modules/`.
 
 Ne jamais connecter directement une page à PostgreSQL ou ChromaDB : l'API demeure la frontière applicative.
+## Fine-tuning et Benchmark NLP
+
+L'écran de fine-tuning propose trois profils d'hyperparamètres : validation
+rapide, démonstration équilibrée et benchmark reproductible. Les paramètres
+sont regroupés par optimisation, ressources, reproductibilité, régularisation
+et sélection du checkpoint. Un récapitulatif complet est affiché avant le
+lancement.
+
+La page `04_benchmark_nlp.py` compare les entraînements de CamemBERT,
+CamemBERTv2 et JuriBERT enregistrés dans PostgreSQL. Elle présente :
+
+- les runs réussis et la couverture des trois modèles ;
+- le meilleur macro-F1 ;
+- un tableau et un graphique des principales métriques ;
+- les hyperparamètres de chaque expérience ;
+- les empreintes du dataset et du code source ;
+- une alerte lorsque les runs sélectionnés ne partagent pas la même signature
+  de benchmark.

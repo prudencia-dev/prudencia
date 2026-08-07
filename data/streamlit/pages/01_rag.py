@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import streamlit as st
@@ -10,15 +11,18 @@ from services.api import PrudenciaAPI
 COLLECTION_NAME = "prudencia_legal_documents"
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 200
+RAG_INDEX_TIMEOUT_SECONDS = int(
+    os.getenv("RAG_INDEX_TIMEOUT_SECONDS", "1800")
+)
 
 
 st.set_page_config(
-    page_title="Base documentaire",
+    page_title="Base vectorielle",
     page_icon="📚",
     layout="wide",
 )
 
-st.title("📚 Base documentaire")
+st.title("📚 Base vectorielle")
 st.caption(
     "Importation, indexation et recherche dans le corpus "
     "documentaire de PRUDENCIA."
@@ -270,6 +274,7 @@ with documents_tab:
                         "chunk_overlap": str(chunk_overlap),
                         "collection_name": COLLECTION_NAME,
                     },
+                    timeout=RAG_INDEX_TIMEOUT_SECONDS,
                 )
 
             progress_message.info(
@@ -696,12 +701,12 @@ with administration_tab:
     )
 
     confirmation = st.checkbox(
-        "Je confirme vouloir supprimer l'intégralité de la base documentaire.",
+        "Je confirme vouloir supprimer l'intégralité de la base vectorielle.",
         key="confirm_reset_rag",
     )
 
     if st.button(
-        "🗑️ Réinitialiser la base documentaire",
+        "🗑️ Réinitialiser la base vectorielle",
         type="primary",
         disabled=not confirmation,
         use_container_width=True,
@@ -709,7 +714,7 @@ with administration_tab:
 
         try:
             with st.spinner(
-                "Réinitialisation de la base documentaire..."
+                "Réinitialisation de la base vectorielle..."
             ):
                 result = PrudenciaAPI.post(
                     "/rag/reset",
@@ -718,7 +723,7 @@ with administration_tab:
             st.success(
                 result.get(
                     "message",
-                    "Base documentaire réinitialisée."
+                    "Base vectorielle réinitialisée."
                 )
             )
 
@@ -758,4 +763,3 @@ with administration_tab:
             st.error(
                 f"Erreur : {error}"
             )
-        

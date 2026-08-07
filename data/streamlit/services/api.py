@@ -1,7 +1,9 @@
+import os
+
 import requests
 
 
-API_URL = "http://api:8000"
+API_URL = os.getenv("API_URL", "http://api:8000")
 
 
 class PrudenciaAPI:
@@ -35,13 +37,14 @@ class PrudenciaAPI:
         json=None,
         files=None,
         data=None,
+        timeout: int = 600,
     ):
         response = requests.post(
             f"{API_URL}{endpoint}",
             json=json,
             files=files,
             data=data,
-            timeout=600,
+            timeout=timeout,
         )
 
         return PrudenciaAPI._parse_response(response)

@@ -22,6 +22,45 @@ API_URL = os.getenv(
 # élevé afin que Streamlit n'interrompe pas la requête pendant l'entraînement.
 TRAINING_TIMEOUT = 3600
 
+TRAINING_PROFILES: dict[str, dict[str, Any]] = {
+    "Validation rapide": {
+        "epochs": 1,
+        "batch_size": 2,
+        "learning_rate": 5e-5,
+        "max_length": 128,
+        "gradient_accumulation_steps": 1,
+        "early_stopping_patience": 1,
+        "weight_decay": 0.01,
+        "warmup_ratio": 0.05,
+        "metric_for_best_model": "accuracy",
+        "use_class_weights": False,
+    },
+    "Démonstration équilibrée": {
+        "epochs": 5,
+        "batch_size": 4,
+        "learning_rate": 2e-5,
+        "max_length": 256,
+        "gradient_accumulation_steps": 2,
+        "early_stopping_patience": 2,
+        "weight_decay": 0.01,
+        "warmup_ratio": 0.10,
+        "metric_for_best_model": "macro_f1",
+        "use_class_weights": True,
+    },
+    "Benchmark reproductible": {
+        "epochs": 10,
+        "batch_size": 4,
+        "learning_rate": 2e-5,
+        "max_length": 256,
+        "gradient_accumulation_steps": 2,
+        "early_stopping_patience": 3,
+        "weight_decay": 0.01,
+        "warmup_ratio": 0.10,
+        "metric_for_best_model": "macro_f1",
+        "use_class_weights": True,
+    },
+}
+
 
 # -------------------------------------------------------------------
 # Utilitaires de lecture et d'affichage
@@ -624,6 +663,13 @@ def render_fine_tuning() -> None:
             "JuriBERT est conseillé pour les textes juridiques français."
         ),
     )
+    selected_model = next(
+        model for model in available_models if model["id"] == model_name
+    )
+    st.caption(
+        f"Checkpoint : `{selected_model.get('huggingface_id', '—')}` — "
+        f"{selected_model.get('description', '')}"
+    )
 
     st.header("📝 Configuration du dataset")
     configuration_columns = st.columns(2)
@@ -661,13 +707,27 @@ def render_fine_tuning() -> None:
 
     st.header("⚙️ Hyperparamètres")
 
+    profile_name = st.selectbox(
+        "Profil de configuration",
+        options=list(TRAINING_PROFILES),
+        index=2,
+        help=(
+            "Le profil Benchmark doit être conservé à l'identique pour "
+            "CamemBERT, CamemBERTv2 et JuriBERT."
+        ),
+    )
+    profile = TRAINING_PROFILES[profile_name]
+
+    st.subheader("Optimisation")
+
     basic_columns = st.columns(3)
     epochs = basic_columns[0].number_input(
         "Epochs maximum",
         min_value=1,
         max_value=50,
-        value=10,
+        value=profile["epochs"],
         step=1,
+        key=f"epochs_{profile_name}",
         help=(
             "Nombre maximal de passages complets sur le dataset. "
             "L'early stopping peut arrêter le run avant."
@@ -676,7 +736,8 @@ def render_fine_tuning() -> None:
     batch_size = basic_columns[1].selectbox(
         "Batch réel",
         options=[1, 2, 4, 8, 16],
-        index=2,
+        index=[1, 2, 4, 8, 16].index(profile["batch_size"]),
+        key=f"batch_size_{profile_name}",
         help=(
             "Nombre d'exemples chargés simultanément. Une valeur élevée "
             "consomme davantage de RAM ou de mémoire GPU."
@@ -686,20 +747,23 @@ def render_fine_tuning() -> None:
         "Learning rate",
         min_value=0.000001,
         max_value=0.001,
-        value=0.00002,
+        value=profile["learning_rate"],
         step=0.000001,
         format="%.6f",
+        key=f"learning_rate_{profile_name}",
         help=(
             "Taille des corrections appliquées au modèle. 2e-5 est une "
             "bonne valeur initiale pour JuriBERT."
         ),
     )
 
+    st.subheader("Ressources et reproductibilité")
     resource_columns = st.columns(3)
     max_length = resource_columns[0].selectbox(
         "Longueur maximale (tokens)",
         options=[128, 256, 320, 384, 512],
-        index=1,
+        index=[128, 256, 320, 384, 512].index(profile["max_length"]),
+        key=f"max_length_{profile_name}",
         help=(
             "Les textes plus longs sont tronqués. Une valeur plus faible "
             "réduit fortement la charge du serveur."
@@ -708,7 +772,10 @@ def render_fine_tuning() -> None:
     gradient_accumulation_steps = resource_columns[1].selectbox(
         "Accumulation de gradients",
         options=[1, 2, 4, 8, 16],
-        index=1,
+        index=[1, 2, 4, 8, 16].index(
+            profile["gradient_accumulation_steps"]
+        ),
+        key=f"gradient_accumulation_{profile_name}",
         help=(
             "Simule un batch plus grand sans charger tous les exemples en "
             "mémoire au même moment."
@@ -734,13 +801,15 @@ def render_fine_tuning() -> None:
         f"{gradient_accumulation_steps} = {effective_batch_size}."
     )
 
+    st.subheader("Régularisation et sélection du checkpoint")
     regularization_columns = st.columns(3)
     early_stopping_patience = regularization_columns[0].number_input(
         "Patience early stopping",
         min_value=0,
         max_value=20,
-        value=3,
+        value=profile["early_stopping_patience"],
         step=1,
+        key=f"early_stopping_{profile_name}",
         help=(
             "Nombre d'epochs sans amélioration avant arrêt automatique. "
             "0 désactive l'early stopping."
@@ -750,18 +819,20 @@ def render_fine_tuning() -> None:
         "Weight decay",
         min_value=0.0,
         max_value=1.0,
-        value=0.01,
+        value=profile["weight_decay"],
         step=0.01,
         format="%.3f",
+        key=f"weight_decay_{profile_name}",
         help="Régularisation qui limite le surapprentissage.",
     )
     warmup_ratio = regularization_columns[2].number_input(
         "Warmup ratio",
         min_value=0.0,
         max_value=0.5,
-        value=0.10,
+        value=profile["warmup_ratio"],
         step=0.05,
         format="%.2f",
+        key=f"warmup_ratio_{profile_name}",
         help=(
             "Fait monter progressivement le learning rate au début du run."
         ),
@@ -771,7 +842,10 @@ def render_fine_tuning() -> None:
     metric_for_best_model = selection_columns[0].selectbox(
         "Métrique du meilleur checkpoint",
         options=["macro_f1", "f1_weighted", "accuracy", "loss"],
-        index=0,
+        index=["macro_f1", "f1_weighted", "accuracy", "loss"].index(
+            profile["metric_for_best_model"]
+        ),
+        key=f"selection_metric_{profile_name}",
         help=(
             "Macro-F1 donne le même poids aux cinq classes et constitue "
             "le meilleur choix pour PRUDENCIA."
@@ -779,18 +853,41 @@ def render_fine_tuning() -> None:
     )
     use_class_weights = selection_columns[1].checkbox(
         "Activer les poids de classes",
-        value=True,
+        value=profile["use_class_weights"],
+        key=f"class_weights_{profile_name}",
         help=(
             "Augmente le coût des erreurs sur les classes moins fréquentes."
         ),
     )
 
+    with st.expander("Récapitulatif de l'expérience", expanded=True):
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Profil": profile_name,
+                        "Modèle": model_labels.get(model_name, model_name),
+                        "Epochs": int(epochs),
+                        "Learning rate": float(learning_rate),
+                        "Batch réel": int(batch_size),
+                        "Accumulation": int(gradient_accumulation_steps),
+                        "Batch effectif": effective_batch_size,
+                        "Tokens": int(max_length),
+                        "Seed": int(seed),
+                        "Métrique": metric_for_best_model,
+                        "Poids de classes": bool(use_class_weights),
+                    }
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption(
+            "Pour un benchmark valide, conserver le même dataset, le même "
+            "profil et la même seed en ne changeant que le modèle de base."
+        )
+
     st.divider()
-    st.caption(
-        "Configuration conseillée pour la démonstration : JuriBERT, 10 epochs, "
-        "batch 4, accumulation 2, 2e-5, seed 42, 256 tokens, patience 3, "
-        "macro-F1 et poids de classes activés."
-    )
 
     col_train, col_reset = st.columns(2)
     launch_training = col_train.button(
@@ -830,6 +927,7 @@ def render_fine_tuning() -> None:
         )
     }
     form_data = {
+        "training_profile": profile_name,
         "model_name": model_name,
         "text_column": text_column,
         "label_column": label_column,

@@ -46,6 +46,9 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 - [Développement et tests](developpement.md)
 - [Référence des modules](reference-modules.md)
 - [Base de données locale](BASE_DONNEES_LOCALE.md)
+- [Installation sous Windows 11 — consignes pour Codex](INSTALLATION_WINDOWS_11_CODEX.md)
+- [Guide des profils et hyperparamètres NLP](GUIDE_PROFILS_HYPERPARAMETRES.md)
+- [Comprendre les trois profils d'entraînement](COMPRENDRE_PROFILS_ENTRAINEMENT.md)
 
 ### Rapports d'évolution — ordre chronologique
 
@@ -60,6 +63,11 @@ Les modèles Hugging Face sont téléchargés au premier usage. Le premier déma
 8. [08 — Intégration et recette du MVP](08_RAPPORT_EVOLUTION_INTEGRATION_RECETTE_MVP.md)
 9. [09 — Release v1.2.0](09_RAPPORT_EVOLUTION_RELEASE_V1_2_0.md)
 10. [10 — Documentation technique et schémas d'architecture](10_RAPPORT_EVOLUTION_DOCUMENTATION_ARCHITECTURE.md)
+11. [11 — Guide d'installation Windows 11](11_RAPPORT_EVOLUTION_GUIDE_INSTALLATION_WINDOWS.md)
+12. [12 — Port PostgreSQL local configurable](12_RAPPORT_EVOLUTION_PORT_POSTGRESQL_LOCAL.md)
+13. [13 — Libellé « Base vectorielle »](13_RAPPORT_EVOLUTION_LIBELLE_BASE_VECTORIELLE.md)
+14. [14 — Fiabilisation des indexations RAG longues](14_RAPPORT_EVOLUTION_TIMEOUT_INDEXATION_RAG.md)
+15. [15 — Tableau de bord Benchmark NLP](15_RAPPORT_EVOLUTION_TABLEAU_BENCHMARK_NLP.md)
 
 ## Organisation du dépôt
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -35,6 +38,39 @@ router = APIRouter(
 
 UPLOAD_DATASET_DIR = Path("/app/uploads/datasets")
 UPLOAD_DATASET_DIR.mkdir(parents=True, exist_ok=True)
+SOURCE_CODE_VERSION = os.getenv("PRUDENCIA_CODE_VERSION", "1.2.0-local")
+SOURCE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _sha256_file(path: Path) -> str:
+    """Calcule l'empreinte stable du dataset réellement entraîné."""
+
+    digest = hashlib.sha256()
+    with path.open("rb") as dataset_file:
+        for block in iter(lambda: dataset_file.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _benchmark_signature(configuration: dict[str, Any]) -> str:
+    """Identifie les runs comparables, indépendamment du modèle BERT."""
+
+    serialized = json.dumps(
+        configuration,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()[:16]
+
+
+def _source_code_sha256(root: Path = SOURCE_ROOT) -> str:
+    """Empreinte le code Python réellement utilisé par l'API."""
+
+    digest = hashlib.sha256()
+    for source_file in sorted(root.rglob("*.py")):
+        digest.update(str(source_file.relative_to(root)).encode("utf-8"))
+        digest.update(source_file.read_bytes())
+    return digest.hexdigest()
 
 
 class PredictionRequest(BaseModel):
@@ -251,6 +287,7 @@ async def train_model(
     warmup_ratio: float = Form(0.10),
     metric_for_best_model: str = Form("macro_f1"),
     use_class_weights: bool = Form(True),
+    training_profile: str = Form("Personnalisé"),
 ) -> dict[str, Any]:
     """
     Reçoit un CSV, lance le Fine-Tuning puis journalise l'expérience.
@@ -374,7 +411,37 @@ async def train_model(
             batch_size * gradient_accumulation_steps
         )
 
+        dataset_sha256 = _sha256_file(dataset_path)
+        source_code_sha256 = _source_code_sha256()
+        reproducibility_configuration = {
+            "dataset_sha256": dataset_sha256,
+            "source_code_sha256": source_code_sha256,
+            "text_column": text_column,
+            "label_column": label_column,
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "gradient_accumulation_steps": gradient_accumulation_steps,
+            "learning_rate": learning_rate,
+            "seed": seed,
+            "max_length": max_length,
+            "early_stopping_patience": early_stopping_patience,
+            "weight_decay": weight_decay,
+            "warmup_ratio": warmup_ratio,
+            "metric_for_best_model": metric_for_best_model,
+            "use_class_weights": use_class_weights,
+        }
+        benchmark_signature = _benchmark_signature(
+            reproducibility_configuration
+        )
+
         input_data = {
+            "training_profile": training_profile[:100],
+            "model_huggingface_id": AVAILABLE_MODELS[model_name]["hf_id"],
+            "source_code_version": SOURCE_CODE_VERSION,
+            "source_code_sha256": source_code_sha256,
+            "dataset_sha256": dataset_sha256,
+            "dataset_size_bytes": dataset_path.stat().st_size,
+            "benchmark_signature": benchmark_signature,
             "text_column": text_column,
             "label_column": label_column,
             "epochs": epochs,
@@ -393,7 +460,7 @@ async def train_model(
             "use_class_weights": use_class_weights,
         }
 
-        save_training_execution(
+        execution = save_training_execution(
             model_type="deep_learning",
             model_name=model_name,
             model_version=model_version,
@@ -410,6 +477,13 @@ async def train_model(
         )
 
         return {
+            "traceability": execution
+            | {
+                "dataset_sha256": dataset_sha256,
+                "benchmark_signature": benchmark_signature,
+                "source_code_version": SOURCE_CODE_VERSION,
+                "source_code_sha256": source_code_sha256,
+            },
             "preparation": preparation_dict,
             "quality_report": trainer.get_quality_report(),
             "training": result,

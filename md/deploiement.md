@@ -4,7 +4,7 @@
 
 `compose/dev/compose.yaml` démarre :
 
-- PostgreSQL 16 sur le port hôte 5432 ;
+- PostgreSQL 16 sur le port hôte défini par `POSTGRES_HOST_PORT` (`5433` par défaut) ;
 - ChromaDB sur le port hôte 8001 ;
 - FastAPI, construit depuis `data/fastapi/Dockerfile` ;
 - Streamlit sur le port hôte 8501.
@@ -24,6 +24,8 @@ POSTGRES_PASSWORD=change-me
 POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
 API_PORT=8000
+POSTGRES_HOST_PORT=5433
+RAG_INDEX_TIMEOUT_SECONDS=1800
 TZ=Europe/Paris
 ```
 
@@ -32,6 +34,8 @@ Variables définies ou surchargées par Compose :
 | Variable | Rôle | Valeur Docker |
 |---|---|---|
 | `API_URL` | URL FastAPI vue par Streamlit | `http://api:8000` |
+| `POSTGRES_HOST_PORT` | Port PostgreSQL exposé sur le poste local | `5433` |
+| `RAG_INDEX_TIMEOUT_SECONDS` | Délai maximal d'une indexation depuis Streamlit | `1800` |
 | `CHROMA_HOST` | Hôte ChromaDB | `chromadb` |
 | `CHROMA_PORT` | Port interne ChromaDB | `8000` |
 | `CHROMA_COLLECTION` | Collection RAG par défaut | `prudencia_legal_documents` |

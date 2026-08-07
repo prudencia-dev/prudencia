@@ -69,7 +69,7 @@ def save_training_execution(
     success: bool,
     error_message: str | None = None,
     execution_type: str = "training",
-) -> None:
+) -> dict[str, Any]:
     """
     Enregistre un entraînement dans PostgreSQL.
     """
@@ -108,7 +108,8 @@ def save_training_execution(
                     %s,
                     %s,
                     %s
-                );
+                )
+                RETURNING id, executed_at;
                 """,
                 (
                     model_type,
@@ -125,6 +126,7 @@ def save_training_execution(
                     error_message,
                 ),
             )
+            execution_id, executed_at = cursor.fetchone()
 
         connection.commit()
 
@@ -133,6 +135,11 @@ def save_training_execution(
             model_name=model_name,
             model_version=model_version,
         )
+
+        return {
+            "run_id": str(execution_id),
+            "executed_at": executed_at.isoformat(),
+        }
 
 def get_training_history() -> list[dict]:
     """

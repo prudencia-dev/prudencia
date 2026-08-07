@@ -9,6 +9,7 @@ MODEL_NAME = RAG_EMBEDDING_MODEL
 
 _model: SentenceTransformer | None = None
 _model_lock = Lock()
+_encoding_lock = Lock()
 
 
 def get_model() -> SentenceTransformer:
@@ -36,10 +37,15 @@ def get_embedding(text: str) -> list[float]:
 
     model = get_model()
 
-    embedding = model.encode(
-        text.strip(),
-        normalize_embeddings=True,
-    )
+    # BGE-M3 est exécuté sur CPU dans l'environnement Docker local. Les
+    # encodages concurrents se disputent les mêmes ressources et peuvent
+    # fortement allonger le traitement. Une seule inférence est donc lancée
+    # à la fois dans le processus API.
+    with _encoding_lock:
+        embedding = model.encode(
+            text.strip(),
+            normalize_embeddings=True,
+        )
 
     return embedding.tolist()
 
@@ -52,9 +58,10 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
     if any(not text for text in normalized_texts):
         raise ValueError("Les textes à encoder ne peuvent pas être vides.")
 
-    embeddings = get_model().encode(
-        normalized_texts,
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
+    with _encoding_lock:
+        embeddings = get_model().encode(
+            normalized_texts,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
     return embeddings.tolist()
