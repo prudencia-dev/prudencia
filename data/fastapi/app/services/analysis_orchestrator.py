@@ -11,7 +11,7 @@ class AnalysisOrchestrator:
 
     Ce composant est le point d'entrée unique de l'analyse.
 
-    Chaque moteur (ML, DL, RAG) reste indépendant.
+    Chaque moteur (DL, RAG) reste indépendant.
     L'orchestrateur coordonne uniquement leur exécution puis
     construit le rapport final.
     """
@@ -23,7 +23,6 @@ class AnalysisOrchestrator:
         self,
         *,
         project: dict[str, Any],
-        machine_learning_result: dict[str, Any] | None = None,
         deep_learning_result: dict[str, Any] | None = None,
         rag_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -36,7 +35,6 @@ class AnalysisOrchestrator:
 
         return self.report_builder.build(
             project=project,
-            machine_learning_result=machine_learning_result,
             deep_learning_result=deep_learning_result,
             rag_result=rag_result,
         )

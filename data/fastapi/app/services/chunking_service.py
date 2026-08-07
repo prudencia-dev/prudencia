@@ -1,13 +1,11 @@
-from typing import List
-
 from app.database import get_connection
 
 
 def split_text(
     text: str,
     chunk_size: int = 1000,
-    overlap: int = 200
-) -> List[str]:
+    overlap: int = 200,
+) -> list[str]:
 
     if not text:
         return []
@@ -31,7 +29,7 @@ def count_words(text: str) -> int:
     return len(text.split()) if text else 0
 
 
-def save_chunks(document_id: str, chunks: List[str]):
+def save_chunks(document_id: str, chunks: list[str]):
 
     with get_connection() as conn:
         with conn.cursor() as cur:

@@ -8,7 +8,6 @@ from typing import Any
 import requests
 import streamlit as st
 
-
 API_URL = os.getenv(
     "PRUDENCIA_API_URL",
     os.getenv("API_URL", "http://api:8000"),
@@ -525,7 +524,6 @@ if launch:
                         "page_count"
                     ),
                 },
-                "machine_learning_result": {},
                 "deep_learning_result": normalize_prediction(
                     prediction
                 ),

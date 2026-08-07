@@ -10,6 +10,16 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
+from app.ai.fine_tuning.dataset import (
+    DatasetManager,
+    DatasetQualityReport,
+)
+from app.config import (
+    AVAILABLE_MODELS,
+    FINE_TUNED_DIR,
+    PRETRAINED_DIR,
+)
+from app.services.training_history_service import save_model_reset
 from datasets import ClassLabel, Dataset
 from sklearn.metrics import (
     accuracy_score,
@@ -24,17 +34,6 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
-
-from app.ai.fine_tuning.dataset import (
-    DatasetManager,
-    DatasetQualityReport,
-)
-from app.config import (
-    AVAILABLE_MODELS,
-    FINE_TUNED_DIR,
-    PRETRAINED_DIR,
-)
-from app.services.training_history_service import save_model_reset
 
 
 @dataclass

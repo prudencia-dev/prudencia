@@ -1,9 +1,10 @@
+import os
 from pathlib import Path
 
 import pymupdf
+from app.services.upload_security import confined_path
 
-
-UPLOAD_DIR = Path("/uploads")
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/uploads"))
 
 
 def get_safe_pdf_path(filename: str) -> Path:
@@ -12,7 +13,7 @@ def get_safe_pdf_path(filename: str) -> Path:
     Empêche d'accéder à un fichier situé hors du dossier /uploads.
     """
     safe_filename = Path(filename).name
-    file_path = UPLOAD_DIR / safe_filename
+    file_path = confined_path(UPLOAD_DIR, safe_filename)
 
     if not file_path.exists():
         raise FileNotFoundError(

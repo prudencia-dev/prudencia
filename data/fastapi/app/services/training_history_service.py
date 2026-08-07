@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import json
 from typing import Any
+
 from app.database import get_connection
+
 
 def set_active_model(
     *,

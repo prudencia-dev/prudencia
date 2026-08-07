@@ -1,26 +1,28 @@
 
 from __future__ import annotations
+
+import os
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 from uuid import UUID
-from fastapi import UploadFile
-#from app.ai.camembert import get_embedding
-from app.ai.bge_m3 import get_embedding
-import os
+
+from app.ai.bge_m3 import get_embeddings
+from app.ai.embedding_config import RAG_EMBEDDING_MODEL
 from app.ai.rag import (
     DEFAULT_COLLECTION,
     add_chunks,
-    reset_collection,
     delete_document_embeddings,
+    reset_collection,
 )
 from app.database import get_connection
 from app.services.chunking_service import save_chunks, split_text
 from app.services.document_service import save_uploaded_file
 from app.services.pdf_service import extract_pdf_text
-from pathlib import Path
+from app.services.upload_security import confined_path
+from fastapi import UploadFile
 
-DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
-#DEFAULT_EMBEDDING_MODEL = "almanach/camembert-base"
+DEFAULT_EMBEDDING_MODEL = RAG_EMBEDDING_MODEL
 UPLOAD_DIR = Path(
     os.getenv("UPLOAD_DIR", "/uploads")
 )
@@ -145,6 +147,7 @@ def build_chunk_metadata(
     embedding_model: str,
     chunk_size: int,
     chunk_overlap: int,
+    embedding_dimension: int,
 ) -> list[dict[str, Any]]:
     """
     Construit les métadonnées envoyées à ChromaDB.
@@ -160,6 +163,8 @@ def build_chunk_metadata(
                 "chunk_index": chunk_index,
                 "collection_name": collection_name,
                 "embedding_model": embedding_model,
+                "embedding_dimension": embedding_dimension,
+                "embedding_normalized": True,
                 "chunk_size": chunk_size,
                 "chunk_overlap": chunk_overlap,
                 "source_type": "pdf",
@@ -193,6 +198,11 @@ def index_pdf_document(
         chunk_overlap=chunk_overlap,
     )
 
+    if embedding_model != DEFAULT_EMBEDDING_MODEL:
+        raise ValueError(
+            f"Le modèle d'embedding doit être {DEFAULT_EMBEDDING_MODEL}."
+        )
+
     start_time = perf_counter()
 
     # ------------------------------------------------------
@@ -203,6 +213,7 @@ def index_pdf_document(
 
     document_id = saved_document["document_id"]
     filename = saved_document["filename"]
+    stored_filename = saved_document["stored_filename"]
 
     # Vérifie que PostgreSQL a retourné un UUID valide.
     UUID(document_id)
@@ -211,7 +222,7 @@ def index_pdf_document(
     # 2. Extraction du texte
     # ------------------------------------------------------
 
-    extraction_result = extract_pdf_text(filename)
+    extraction_result = extract_pdf_text(stored_filename)
 
     text = extraction_result.get("text", "")
     page_count = extraction_result.get("page_count", 0)
@@ -256,11 +267,8 @@ def index_pdf_document(
     # 4. Génération des embeddings BGE-M3
     # ------------------------------------------------------
 
-    embeddings: list[list[float]] = []
-
-    for chunk in chunks:
-        embedding = get_embedding(chunk)
-        embeddings.append(embedding)
+    embeddings = get_embeddings(chunks)
+    embedding_dimension = len(embeddings[0])
 
     # Un identifiant ChromaDB unique par chunk.
     chunk_ids = [
@@ -276,6 +284,7 @@ def index_pdf_document(
         embedding_model=embedding_model,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
+        embedding_dimension=embedding_dimension,
     )
 
     # ------------------------------------------------------
@@ -316,6 +325,7 @@ def index_pdf_document(
         "message": "Document correctement indexé dans le RAG.",
         "document_id": document_id,
         "document": filename,
+        "stored_filename": stored_filename,
         "collection": collection_name,
         "embedding_model": embedding_model,
         "pages": page_count,
@@ -328,9 +338,7 @@ def index_pdf_document(
         "chunk_size": chunk_size,
         "chunk_overlap": chunk_overlap,
         "embedding_dimension": (
-            len(embeddings[0])
-            if embeddings
-            else 0
+            embedding_dimension
         ),
         "collection_count": chroma_result.get(
             "collection_count",
@@ -513,9 +521,14 @@ def delete_document(
 
     deleted_file = False
 
-    if file_path and os.path.exists(file_path):
-        os.remove(file_path)
-        deleted_file = True
+    if file_path:
+        safe_file_path = confined_path(
+            UPLOAD_DIR,
+            Path(file_path).name,
+        )
+        if safe_file_path.is_file():
+            safe_file_path.unlink()
+            deleted_file = True
 
     return {
         "status": "success",
