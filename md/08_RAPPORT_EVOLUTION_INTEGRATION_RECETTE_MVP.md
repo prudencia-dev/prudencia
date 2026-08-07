@@ -68,4 +68,6 @@ La version exposée par FastAPI et par la route racine est alignée sur le MVP d
 
 ## Conclusion
 
-La branche consolidée est fonctionnelle et prête à être proposée dans une pull request finale vers `develop`. La fusion définitive reste conditionnée au succès de la CI distante sur cette branche combinée.
+La branche consolidée est fonctionnelle et proposée dans la pull request finale #14 vers `develop`.
+
+La CI distante GitHub Actions a validé les trois contrôles sur l'état combiné : qualité et tests Python, configuration Docker Compose et initialisation du schéma PostgreSQL. La branche est donc prête pour la décision de fusion définitive.
