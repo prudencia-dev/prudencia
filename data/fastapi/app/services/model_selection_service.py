@@ -17,8 +17,6 @@ class ModelSelectionService:
     - Deep Learning :
       modèle utilisé pour analyser le champ libre.
 
-    Le Machine Learning n'est pas configurable :
-    Random Forest reste le modèle officiel du projet.
     """
 
     CONFIG_PATH = (
@@ -158,15 +156,6 @@ class ModelSelectionService:
                     deep_learning_model_id
                 ]
             ),
-            "machine_learning": {
-                "id": "random_forest",
-                "name": "Random Forest",
-                "description": (
-                    "Modèle Machine Learning officiel "
-                    "de PRUDENCIA."
-                ),
-                "selectable": False,
-            },
         }
 
     def list_available_models(self) -> dict[str, Any]:
@@ -181,13 +170,6 @@ class ModelSelectionService:
             "deep_learning": list(
                 self.DEEP_LEARNING_MODELS.values()
             ),
-            "machine_learning": [
-                {
-                    "id": "random_forest",
-                    "name": "Random Forest",
-                    "selectable": False,
-                }
-            ],
         }
 
     # ------------------------------------------------------------------

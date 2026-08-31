@@ -525,7 +525,6 @@ if launch:
                         "page_count"
                     ),
                 },
-                "machine_learning_result": {},
                 "deep_learning_result": normalize_prediction(
                     prediction
                 ),

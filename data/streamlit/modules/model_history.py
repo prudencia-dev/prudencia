@@ -177,10 +177,6 @@ def render_model_history() -> None:
             model_label = "Fine-Tuning"
             model_icon = "🧠"
 
-        elif model_type == "machine_learning":
-            model_label = "Machine Learning"
-            model_icon = "🌲"
-
         else:
             model_label = str(model_type)
             model_icon = "⚙️"

@@ -11,6 +11,5 @@ python-multipart
 PyMuPDF
 scikit-learn
 pandas
-joblib
 datasets
 accelerate

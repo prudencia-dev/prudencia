@@ -19,7 +19,7 @@ router = APIRouter(
 def training_history() -> dict[str, Any]:
     """
     Retourne l'historique des entraînements
-    Fine-Tuning et Machine Learning.
+    Fine-Tuning Deep Learning.
     """
 
     try:
